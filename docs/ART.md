@@ -27,7 +27,7 @@ A 2240×1600 render takes about 12 s on an M4 Max (Metal).
 - **Touch pads are interdigitated gold (ENIG) combs.** They're two electrodes your finger bridges, the way the Lyra's touch plates work. Each comb has its spine on one half-ring and fingers at a 4 px pitch. They read as sensors, not as flat grey discs (`parts.touch_pad`, `"pad": "comb"`).
 - **Type: IBM Plex Mono Medium** for silkscreen, **Instrument Serif** for the logo. Both are SIL OFL 1.1, vendored in `art/fonts/` with their licence texts, so they're safe to bake into shipped artwork.
 - **Pair level meters.** Each pair module's second row has a 5-LED SMD meter (4 amber plus 1 pink "hot") between Source and Speed. It fills the dead space with something functional; at runtime it's driven by that pair's telemetry `pairPeak`. Emission uses deep hues, because AgX desaturates small bright emitters toward cream; the final tint can be adjusted in the compositor.
-- **Top-down orthographic camera** for now. It keeps hit-testing trivial. A 15–20° tilt reads better for tall parts (see `--tilt` on the parts sheet), and is still an option.
+- **Top-down orthographic camera, kept after a test.** A 15° tilt (`render_board.py --tilt 15`) gives the knobs a little volume and the toggle levers read slightly better. But the gain is modest, and it foreshortens and shifts the board framing and makes hit-testing non-trivial. The larger cream knobs and 34° toggle levers already read from straight above.
 - **Glow is amber, modest.** Emission above about 3 clips to white under AgX.
 
 ## Open items
@@ -43,3 +43,4 @@ A 2240×1600 render takes about 12 s on an M4 Max (Metal).
 - **Style frame v4:** OFL type (Plex Mono and Instrument Serif) replaces Apple system fonts.
 - **Lit preview v5:** a sounding voice also lights its touch pad (the combs glow amber along with the petal), so the "touched" sensor reads at a glance. In the runtime bake this becomes one more lit layer per voice.
 - **v6:** pair level meters (lit preview shows pairs 12, 34 and 56 playing).
+- **Tilt test:** 15° vs top-down compared (`build/art/tilt_compare.png`); stayed top-down.

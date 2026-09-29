@@ -26,18 +26,19 @@ PX = 0.001  # metres per board px
 
 def parse_args():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    args = {"out": "build/art/style_frame.png", "lit": False, "samples": 128, "scale": 2}
+    args = {"out": "build/art/style_frame.png", "lit": False, "samples": 128, "scale": 2, "tilt": 0.0}
     i = 0
     while i < len(argv):
         a = argv[i]
         if a == "--lit":
             args["lit"] = True
-        elif a in ("--out", "--samples", "--scale"):
+        elif a in ("--out", "--samples", "--scale", "--tilt"):
             args[a[2:]] = argv[i + 1]
             i += 1
         i += 1
     args["samples"] = int(args["samples"])
     args["scale"] = int(args["scale"])
+    args["tilt"] = float(args["tilt"])
     return args
 
 
@@ -635,7 +636,7 @@ def main():
         i = sys.argv.index("--probe")
         probe(float(sys.argv[i + 1]), float(sys.argv[i + 2]))
         return
-    lights_and_camera(scene)
+    lights_and_camera(scene, tilt_deg=ARGS["tilt"])
     compositor(scene)
     out = os.path.join(ROOT, ARGS["out"])
     os.makedirs(os.path.dirname(out), exist_ok=True)
