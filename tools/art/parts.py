@@ -159,13 +159,18 @@ def knob_cream(cx, cy, value, r=13.0):
 
 # ----------------------------------------------------------------------------- touch pads
 
-def touch_pad(cx, cy, r=20.0, pitch=4.0, gap=2.2):
+def touch_pad(cx, cy, r=20.0, pitch=4.0, gap=2.2, lit=False):
     """Interdigitated touch sensor: two gold combs, each spined on a half ring.
 
     A fingertip bridges the two electrodes, like the Lyra's touch plates.
+    `lit` gives the combs a warm glow (the voice is sounding).
     """
-    gold = mats().setdefault("enig", material("enig", (1.0, 0.74, 0.34), rough=0.26, metal=1.0,
-                                              bump=0.05, bump_scale=1200))
+    if lit:
+        gold = mats().setdefault("enig_lit", material("enig_lit", (1.0, 0.74, 0.34), rough=0.26, metal=0.6,
+                                                      emit=(1.0, 0.55, 0.18), emit_strength=1.6))
+    else:
+        gold = mats().setdefault("enig", material("enig", (1.0, 0.74, 0.34), rough=0.26, metal=1.0,
+                                                  bump=0.05, bump_scale=1200))
     polys_a, polys_b = [], []
     steps = 40
     for side, polys in ((-1, polys_a), (1, polys_b)):

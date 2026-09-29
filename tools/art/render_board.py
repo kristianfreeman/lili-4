@@ -376,7 +376,7 @@ def build(scene):
     for i, (x, y) in enumerate(LAYOUT["pads"]):
         if style.get("pad") == "comb":
             # interdigitated touch sensor (see parts.touch_pad)
-            parts.touch_pad(x, y, LAYOUT["padRadius"])
+            parts.touch_pad(x, y, LAYOUT["padRadius"], lit=i in lit_spec.get("petals", []))
         else:
             # HASL pads: a slightly domed solder coat, rounded at the edge
             cylinder(f"pad{i}", x, y, LAYOUT["padRadius"], 0.0009, tin, verts=96, bevel_px=3)

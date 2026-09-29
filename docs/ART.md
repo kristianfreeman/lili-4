@@ -41,3 +41,4 @@ A 2240×1600 render takes about 12 s on an M4 Max (Metal).
 - **Style frame v2:** cream knobs, bat toggles, headings and bottom row re-spaced so scales don't collide.
 - **Style frame v3:** gold interdigitated touch pads.
 - **Style frame v4:** OFL type (Plex Mono and Instrument Serif) replaces Apple system fonts.
+- **Lit preview v5:** a sounding voice also lights its touch pad (the combs glow amber along with the petal), so the "touched" sensor reads at a glance. In the runtime bake this becomes one more lit layer per voice.
