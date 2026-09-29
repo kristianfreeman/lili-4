@@ -13,14 +13,20 @@ Not affiliated with SOMA Laboratory or Mike Moreno DSP.
   touch "thump", hold, vibrato, the cross-mod source matrix, Hyper LFO, dual mod
   delay (including the reference's odd compressor/expander), drive and
   distortion, total feedback. See [`docs/SPEC.md`](docs/SPEC.md).
-- Generic parameter UI for now (a custom GUI is future work).
-- Validated with `auval` and pluginval (strictness 10).
+- **Rendered circuit-board UI.** A vintage green PCB whose signal flow is drawn as a lily: the petals are the 8 voices, the stem is the mix → delay → drive path, and the leaves are the two LFOs. It's rendered in Blender and composited natively. Cream knobs and bat toggles are drawn from sprite strips at the live parameter values. Petals, pads, stem, delay lines, cross-mod arcs, the LFO LEDs and per-pair LED meters glow with the actual audio. See [`docs/ART.md`](docs/ART.md).
+- Validated with `auval` and pluginval (strictness 10, including its GUI tests).
 
 ## Playing it
 
-MIDI notes **C1–G1** (36–43) are sensors 1–8. The eight **Sensor N**
-parameters latch voices on without MIDI. **Hold 1234/5678** makes a group
-drone continuously.
+MIDI notes **C1–G1** (36–43) are sensors 1–8. **Hold 1234/5678** makes a group
+drone continuously. On the board:
+
+- **Knobs:** drag up/down (Shift for fine), double-click to reset, scroll wheel.
+- **Toggles:** click to throw; on 3-way toggles, click above or below the pivot.
+- **Touch pads (S1–S8):** click to latch a voice on (the **Sensor N** parameters).
+- **Hover** any control for its value in real units (Hz, ms, ×, %).
+
+Every control is a host parameter, so Live's MIDI Map and automation work on all of them.
 
 ## Building
 
@@ -51,6 +57,9 @@ Engine-only builds (no JUCE download) use `-DLILI_BUILD_PLUGIN=OFF`.
 | `reference/lira-8-pd`| Vendored upstream Pd patch (BSD), used as the reference  |
 | `tools/pdview.py`    | Dumps a Pd patch as readable objects + connections       |
 | `tools/lint.sh`      | clang-format check + clang-tidy                          |
+| `art/`               | Board layout (`board.json`) and vendored OFL fonts         |
+| `tools/art/`         | Blender render, layer bake, sprite strips, reference compositor, UI export |
+| `plugin/assets/`     | Exported UI art the plugin embeds (board, sprite strips, glow deltas) |
 
 ```sh
 ./build/tests/lili_render out.wav 10 gates=1357 delMix=0.6 source12=0 mod12=0.7

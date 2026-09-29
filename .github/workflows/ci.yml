@@ -89,7 +89,7 @@ jobs:
         run: |
           curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
           unzip -q pluginval.zip
-          pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process --skip-gui-tests \
+          pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process \
             --timeout-ms 600000 build/plugin/LILI8_artefacts/Release/VST3/LILI-8.vst3
       - name: Package
         run: |
