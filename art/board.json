@@ -82,7 +82,7 @@
     ["delMod1", 264, 698, "MOD 1", 0.39], ["delMod2", 320, 698, "MOD 2", 0.59],
     ["distDrive", 656, 698, "DRIVE", 0.7], ["distMix", 712, 698, "MIX", 0.5], ["volume", 768, 698, "VOL", 0.8]
   ],
-  "controlStyle": {"knob": "cream", "switch": "toggle"},
+  "controlStyle": {"knob": "cream", "switch": "toggle", "pad": "comb"},
   "jumperPitch": 34,
   "jumpers": [
     ["source12", 44, 196, "SOURCE", ["34", "OFF", "LFO"], 0],

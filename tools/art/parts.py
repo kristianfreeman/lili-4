@@ -157,6 +157,39 @@ def knob_cream(cx, cy, value, r=13.0):
     pointer("cream_dot", cx, cy, value, r - 5.0, r - 2.5, 2.2, 0.0104, m["paint_black"])
 
 
+# ----------------------------------------------------------------------------- touch pads
+
+def touch_pad(cx, cy, r=20.0, pitch=4.0, gap=2.2):
+    """Interdigitated touch sensor: two gold combs, each spined on a half ring.
+
+    A fingertip bridges the two electrodes, like the Lyra's touch plates.
+    """
+    gold = mats().setdefault("enig", material("enig", (1.0, 0.74, 0.34), rough=0.26, metal=1.0,
+                                              bump=0.05, bump_scale=1200))
+    polys_a, polys_b = [], []
+    steps = 40
+    for side, polys in ((-1, polys_a), (1, polys_b)):
+        # half ring spine, stopping short of the top/bottom so the combs don't touch
+        a0 = math.asin(gap / r)
+        arc = []
+        for s in range(steps + 1):
+            a = a0 + (math.pi - 2 * a0) * s / steps  # from top to bottom around one side
+            arc.append((cx + side * r * math.sin(a), cy - r * math.cos(a)))
+        polys.append((arc, False))
+    n = int((2 * r - 2 * pitch) // pitch)
+    for k in range(n + 1):
+        y = -r + pitch + k * pitch
+        half = math.sqrt(max(r * r - y * y, 0.0))
+        if half < pitch:
+            continue
+        side = -1 if k % 2 == 0 else 1
+        start = cx + side * half
+        end = cx - side * (half - gap - 1.0)
+        (polys_a if side < 0 else polys_b).append(([(start, cy + y), (end, cy + y)], False))
+    poly_curve("pad_comb_a", polys_a, 1.6, gold, z=0.0, flatten=0.35)
+    poly_curve("pad_comb_b", polys_b, 1.6, gold, z=0.0, flatten=0.35)
+
+
 # ----------------------------------------------------------------------------- switches & buttons
 
 def toggle_switch(cx, cy, position, s=1.0):

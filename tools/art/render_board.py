@@ -294,6 +294,16 @@ def build(scene):
     lit = ARGS["lit"]
     lit_spec = LAYOUT.get("styleFrameLit", {}) if lit else {}
 
+    style = LAYOUT.get("controlStyle", {})
+    parts = None
+    if style:
+        # Lazy import (parts imports this module for its helpers); blender -P
+        # doesn't put the script's folder on sys.path.
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import parts
+
     # Materials ---------------------------------------------------------------
     mask = mottled_mask("mask", (0.030, 0.150, 0.072), (0.042, 0.178, 0.085))
     trace = material("trace", (0.075, 0.300, 0.130), rough=0.35, coat=0.8, coat_rough=0.06)
@@ -363,8 +373,12 @@ def build(scene):
 
     # Exposed metal ---------------------------------------------------------------
     for i, (x, y) in enumerate(LAYOUT["pads"]):
-        # HASL pads: a slightly domed solder coat, rounded at the edge
-        cylinder(f"pad{i}", x, y, LAYOUT["padRadius"], 0.0009, tin, verts=96, bevel_px=3)
+        if style.get("pad") == "comb":
+            # interdigitated touch sensor (see parts.touch_pad)
+            parts.touch_pad(x, y, LAYOUT["padRadius"])
+        else:
+            # HASL pads: a slightly domed solder coat, rounded at the edge
+            cylinder(f"pad{i}", x, y, LAYOUT["padRadius"], 0.0009, tin, verts=96, bevel_px=3)
         # silkscreen ring + label, offset outward from the flower centre
         ring = bpy.data.curves.new("padring", "CURVE")
         ring.dimensions = "3D"
@@ -395,15 +409,6 @@ def build(scene):
     lx, ly, logo = LAYOUT["logo"]
     text(logo, lx, ly, 34, silk, "left", SERIF, spacing=1.0)
 
-    style = LAYOUT.get("controlStyle", {})
-    parts = None
-    if style:
-        # Lazy import (parts imports this module for its helpers); blender -P
-        # doesn't put the script's folder on sys.path.
-        here = os.path.dirname(os.path.abspath(__file__))
-        if here not in sys.path:
-            sys.path.insert(0, here)
-        import parts
 
     # Knobs: vintage cream (see docs/ART.md), else the placeholder trimmers ---------
     if style.get("knob") == "cream":
