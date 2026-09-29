@@ -15,7 +15,25 @@ driven by engine telemetry. There is no web view or JavaScript in the plugin.
 ```sh
 blender -b -P tools/art/render_board.py -- --out build/art/board.png [--lit] [--samples 128] [--scale 2]
 blender -b -P tools/art/render_parts.py -- --out build/art/parts.png [--tilt 28] [--scale 4]
+blender -b -P tools/art/render_board.py -- --bake --out build/art/layers    # runtime layers
+python3 tools/art/composite.py build/art/layers out.png voice0=1 mix=0.8 delay0=0.5   # preview a state
 ```
+
+### Layer bake (what the plugin composites)
+
+`--bake` renders once with **Cycles light groups**: every animatable element gets its own light group, and the studio lights and world are in `base`. The single render writes:
+- `base.png`: the resting board.
+- 37 glow layers: `voice0..7` (petal, rib and touch pad), `mix`, `delay0/1`, `xmod0/1`, `totalfb`, `lfo0/1`, `stamens`, `meter{pair}_{led}`. Each layer includes the light it spills onto the board around it.
+- `manifest.json`: the layer list, the encoding and the tone-map parameters.
+
+Layers are **linear light**: sRGB-encoded 16-bit PNG, rendered at −2 EV for headroom. The runtime (and `composite.py`) does:
+
+```
+linear = decode(base) + Σ level_i · decode(layer_i)      # decode = srgb→linear × 4
+out    = sRGB( AgX(bloom(linear)) )                     # AgX minimal approx + look (power 1.40, sat 1.05)
+```
+
+The first bake saved tone-mapped layers, and adding those washed the glow out to cream. Linear layers add physically. The AgX look parameters were fitted against Blender's "Medium High Contrast" render of the same scene (MSE 0.018 → 0.0008), so the composited plugin UI matches the style frames. It takes about 30 s for all 38 layers at 2240×1600.
 
 A 2240×1600 render takes about 12 s on an M4 Max (Metal).
 
@@ -32,7 +50,9 @@ A 2240×1600 render takes about 12 s on an M4 Max (Metal).
 
 ## Open items
 
-- The layer bake (base plus a lit layer per animated element, knob rotor frames) and the native compositor.
+- Knob and toggle states: rotor frame strips, or rendering knobs as separate rotatable sprites. Controls are currently baked at their style-frame positions.
+- Crop each glow layer to its bounding box (full-frame layers take about 56 MB; most of it is black).
+- The native JUCE compositor: GPU sum of layers, bloom, AgX, driven by telemetry.
 
 ## Log
 
@@ -44,3 +64,4 @@ A 2240×1600 render takes about 12 s on an M4 Max (Metal).
 - **Lit preview v5:** a sounding voice also lights its touch pad (the combs glow amber along with the petal), so the "touched" sensor reads at a glance. In the runtime bake this becomes one more lit layer per voice.
 - **v6:** pair level meters (lit preview shows pairs 12, 34 and 56 playing).
 - **Tilt test:** 15° vs top-down compared (`build/art/tilt_compare.png`); stayed top-down.
+- **Layer bake:** light-group bake, linear encoding, reference compositor with fitted AgX look (`build/art/composite_play.png`).

@@ -26,12 +26,15 @@ PX = 0.001  # metres per board px
 
 def parse_args():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    args = {"out": "build/art/style_frame.png", "lit": False, "samples": 128, "scale": 2, "tilt": 0.0}
+    args = {"out": "build/art/style_frame.png", "lit": False, "bake": False, "samples": 128, "scale": 2,
+            "tilt": 0.0}
     i = 0
     while i < len(argv):
         a = argv[i]
         if a == "--lit":
             args["lit"] = True
+        elif a == "--bake":
+            args["bake"] = True
         elif a in ("--out", "--samples", "--scale", "--tilt"):
             args[a[2:]] = argv[i + 1]
             i += 1
@@ -292,9 +295,27 @@ def text(body, x, y, size_px, mat, align="left", font_path=MONO, z=0.00045, spac
 
 # ----------------------------------------------------------------------------- build
 
+LIGHTGROUPS = []  # bake mode: one Cycles light group per animatable element
+BAKE_EXPOSURE_EV = -2.0  # headroom for bright emission in 16-bit PNG layers
+
+
 def build(scene):
     lit = ARGS["lit"]
     lit_spec = LAYOUT.get("styleFrameLit", {}) if lit else {}
+    bake = ARGS["bake"]
+    if bake:
+        # Everything that can light up is emissive, each in its own light group.
+        lit_spec = {"petals": list(range(len(LAYOUT["petals"]))), "stem": True, "meanders": [0, 1],
+                    "xmod": [0, 1], "totalFb": True, "leds": [0, 1], "stamenLeds": [0, 1, 2],
+                    "meters": [5] * len(LAYOUT.get("meters", []))}
+
+    def lg(objs, name):
+        if not bake:
+            return
+        for o in objs if isinstance(objs, list) else [objs]:
+            o.lightgroup = name
+        if name not in LIGHTGROUPS:
+            LIGHTGROUPS.append(name)
 
     style = LAYOUT.get("controlStyle", {})
     parts = None
@@ -312,7 +333,11 @@ def build(scene):
     bottom = material("trace_bottom", (0.040, 0.130, 0.068), rough=0.5, coat=0.5)
     # Amber, and modest: hot emission clips to white under AgX.
     glow_col = (1.0, 0.48, 0.12)
-    trace_lit = material("trace_lit", (0.30, 0.42, 0.18), rough=0.3, coat=0.8, emit=glow_col, emit_strength=2.2)
+    # In a bake, lit materials keep the unlit base so the base pass matches the resting board.
+    trace_lit = material("trace_lit", (0.075, 0.300, 0.130) if bake else (0.30, 0.42, 0.18), rough=0.3, coat=0.8,
+                         emit=glow_col, emit_strength=2.2)
+    bottom_lit = material("trace_bottom_lit", (0.040, 0.130, 0.068), rough=0.5, coat=0.5, emit=glow_col,
+                          emit_strength=2.2)
     tin = material("tin", (0.72, 0.72, 0.70), rough=0.3, metal=1.0, bump=0.06, bump_scale=700)
     silk = material("silk", (0.86, 0.85, 0.80), rough=0.75)
     silk_dim = material("silk_dim", (0.55, 0.60, 0.55), rough=0.8)
@@ -326,9 +351,14 @@ def build(scene):
     dip_white = material("dip_white", (0.93, 0.92, 0.88), rough=0.35)
     hole = material("hole", (0.004, 0.004, 0.004), rough=1.0)
     led_off = material("led", (0.55, 0.06, 0.12), rough=0.1, transmission=0.6)
-    led_on = material("led_on", (1.0, 0.2, 0.32), rough=0.1, emit=(1.0, 0.12, 0.28), emit_strength=4.0)
+    if bake:
+        led_on = material("led_on", (0.55, 0.06, 0.12), rough=0.1, transmission=0.6, emit=(1.0, 0.12, 0.28),
+                          emit_strength=4.0)
+    else:
+        led_on = material("led_on", (1.0, 0.2, 0.32), rough=0.1, emit=(1.0, 0.12, 0.28), emit_strength=4.0)
     smd_pink = material("smd_led", (0.75, 0.30, 0.38), rough=0.25)
-    smd_pink_on = material("smd_led_on", (1.0, 0.3, 0.45), emit=(1.0, 0.18, 0.4), emit_strength=3.0)
+    smd_pink_on = material("smd_led_on", (0.75, 0.30, 0.38) if bake else (1.0, 0.3, 0.45), rough=0.25,
+                           emit=(1.0, 0.18, 0.4), emit_strength=3.0)
 
     # Board -------------------------------------------------------------------
     r = LAYOUT["cornerRadius"]
@@ -352,32 +382,34 @@ def build(scene):
 
     # Copper under the mask ------------------------------------------------------
     for idx, d in enumerate(LAYOUT["petals"]):
-        poly_curve(f"petal{idx}", sample_path(d), 2.4,
-                   trace_lit if idx in lit_spec.get("petals", []) else trace)
+        lg(poly_curve(f"petal{idx}", sample_path(d), 2.4,
+                      trace_lit if idx in lit_spec.get("petals", []) else trace), f"voice{idx}")
     for idx, d in enumerate(LAYOUT["ribs"]):
-        poly_curve(f"rib{idx}", sample_path(d), 1.5,
-                   trace_lit if idx in lit_spec.get("petals", []) else trace)
+        lg(poly_curve(f"rib{idx}", sample_path(d), 1.5,
+                      trace_lit if idx in lit_spec.get("petals", []) else trace), f"voice{idx}")
     for d in LAYOUT["traces"]:
         poly_curve("trace", sample_path(d), 2.2, trace)
-    poly_curve("stem", sample_path(LAYOUT["stem"]), 3.2, trace_lit if lit_spec.get("stem") else trace)
+    lg(poly_curve("stem", sample_path(LAYOUT["stem"]), 3.2, trace_lit if lit_spec.get("stem") else trace), "mix")
     for idx, d in enumerate(LAYOUT["meanders"]):
-        poly_curve(f"meander{idx}", sample_path(d), 1.7,
-                   trace_lit if idx in lit_spec.get("meanders", []) else trace)
+        lg(poly_curve(f"meander{idx}", sample_path(d), 1.7,
+                      trace_lit if idx in lit_spec.get("meanders", []) else trace), f"delay{idx}")
     for d in LAYOUT["leaves"]:
         poly_curve("leaf", sample_path(d), 2.2, trace)
     for d in LAYOUT["leafRibs"]:
         poly_curve("leafrib", sample_path(d), 1.2, trace)
     # Bottom-layer routes: seen dimly through the board.
     for idx, d in enumerate(LAYOUT["xmod"]):
-        poly_curve(f"xmod{idx}", sample_path(d), 1.4,
-                   trace_lit if idx in lit_spec.get("xmod", []) else bottom, flatten=0.1)
-    poly_curve("totalfb", sample_path(LAYOUT["totalFb"]), 1.4, bottom, flatten=0.1)
+        lg(poly_curve(f"xmod{idx}", sample_path(d), 1.4,
+                      (bottom_lit if bake else trace_lit) if idx in lit_spec.get("xmod", []) else bottom,
+                      flatten=0.1), f"xmod{idx}")
+    lg(poly_curve("totalfb", sample_path(LAYOUT["totalFb"]), 1.4,
+                  bottom_lit if lit_spec.get("totalFb") else bottom, flatten=0.1), "totalfb")
 
     # Exposed metal ---------------------------------------------------------------
     for i, (x, y) in enumerate(LAYOUT["pads"]):
         if style.get("pad") == "comb":
             # interdigitated touch sensor (see parts.touch_pad)
-            parts.touch_pad(x, y, LAYOUT["padRadius"], lit=i in lit_spec.get("petals", []))
+            lg(parts.touch_pad(x, y, LAYOUT["padRadius"], lit=i in lit_spec.get("petals", [])), f"voice{i}")
         else:
             # HASL pads: a slightly domed solder coat, rounded at the edge
             cylinder(f"pad{i}", x, y, LAYOUT["padRadius"], 0.0009, tin, verts=96, bevel_px=3)
@@ -455,7 +487,9 @@ def build(scene):
     if parts:
         lit_levels = lit_spec.get("meters", [])
         for k, (mx, my) in enumerate(LAYOUT.get("meters", [])):
-            parts.led_meter(mx, my, lit_count=lit_levels[k] if k < len(lit_levels) else 0)
+            lenses = parts.led_meter(mx, my, lit_count=lit_levels[k] if k < len(lit_levels) else 0)
+            for j, lens in enumerate(lenses):
+                lg(lens, f"meter{k}_{j}")
             text("LEVEL", mx, my + 20, 8, silk_dim, "center")
 
     # Jumpers: pin headers, a black cap on the selected position -----------------
@@ -489,8 +523,8 @@ def build(scene):
     cylinder("u1_can", ux, uy, 16.5, 0.0055, chrome, z=0.0006, verts=96, bevel_px=2.5)
     box("u1_tab", ux + 13, uy + 11, 7, 4, 0.0006, chrome, bevel=0.3).rotation_euler.z = math.radians(-45)
     for k, (x, y) in enumerate(LAYOUT["stamenLeds"]):
-        box("stamen_led", x - 4, y - 6, 8, 12, 0.0012,
-            smd_pink_on if k in lit_spec.get("stamenLeds", []) else smd_pink, bevel=0.6)
+        lg(box("stamen_led", x - 4, y - 6, 8, 12, 0.0012,
+               smd_pink_on if k in lit_spec.get("stamenLeds", []) else smd_pink, bevel=0.6), "stamens")
     x, y, w, h = LAYOUT["u2"]
     box("u2", x, y, w, h, 0.0035, epoxy, bevel=0.8)
     for k in range(4):
@@ -507,11 +541,12 @@ def build(scene):
     for k, (x, y) in enumerate(LAYOUT["leds"]):
         on = k in lit_spec.get("leds", [])
         m = led_on if on else led_off
-        cylinder("led_rim", x, y, 7, 0.001, m)
+        rim = cylinder("led_rim", x, y, 7, 0.001, m)
         bpy.ops.mesh.primitive_uv_sphere_add(radius=6 * PX, location=(x * PX, -y * PX, 0.001))
         dome = bpy.context.active_object
         dome.data.materials.append(m)
         bpy.ops.object.shade_smooth()
+        lg([rim, dome], f"lfo{k}")
 
 
 def lights_and_camera(scene, w=None, h=None, tilt_deg=0.0):
@@ -629,6 +664,84 @@ def probe(x, y, radius=30):
             print("PROBE", obj.name, round(cx / PX, 1), round(-cy / PX, 1))
 
 
+def layer_kind(name):
+    for prefix in ("voice", "delay", "xmod", "lfo", "meter"):
+        if name.startswith(prefix):
+            return prefix, name[len(prefix):]
+    return name, None
+
+
+def bake_layers(scene):
+    """One render -> base.png + one additive glow layer per light group + manifest.json.
+
+    Runtime: out = base + sum(level_i * layer_i), then bloom. With --bake, --out is a directory.
+    """
+    outdir = os.path.join(ROOT, ARGS["out"])
+    os.makedirs(outdir, exist_ok=True)
+    # Linear light, not tone-mapped: layers must add physically. sRGB-encoded
+    # 16-bit PNG at -2 EV keeps headroom for glow cores; the runtime decodes,
+    # multiplies by 4, sums, then tone-maps (AgX approximation).
+    scene.view_settings.view_transform = "Standard"
+    scene.view_settings.look = "None"
+    scene.view_settings.exposure = BAKE_EXPOSURE_EV
+    for o in scene.objects:
+        if o.type == "LIGHT" or o.name == "softbox":
+            o.lightgroup = "base"
+    scene.world.lightgroup = "base"
+    names = ["base"] + LIGHTGROUPS
+    vl = scene.view_layers[0]
+    for n in names:
+        vl.lightgroups.add(name=n)
+
+    scene.use_nodes = True
+    nt = scene.node_tree
+    for n in list(nt.nodes):
+        nt.nodes.remove(n)
+    rl = nt.nodes.new("CompositorNodeRLayers")
+    comp = nt.nodes.new("CompositorNodeComposite")
+    nt.links.new(rl.outputs["Image"], comp.inputs["Image"])
+    fo = nt.nodes.new("CompositorNodeOutputFile")
+    fo.base_path = outdir
+    fo.format.file_format = "PNG"
+    fo.format.color_mode = "RGB"
+    fo.format.color_depth = "16"
+    fo.file_slots.remove(fo.inputs[0])
+    written = []
+    for n in names:
+        sock = rl.outputs.get("Combined_" + n)
+        if sock is None:
+            print("MISSING PASS", n)
+            continue
+        dn = nt.nodes.new("CompositorNodeDenoise")
+        nt.links.new(sock, dn.inputs["Image"])
+        fo.file_slots.new(n)
+        nt.links.new(dn.outputs["Image"], fo.inputs[n])
+        written.append(n)
+
+    scene.render.filepath = os.path.join(outdir, "_all_lit.png")
+    bpy.ops.render.render(write_still=True)
+    for n in written:  # the file output node appends the frame number
+        src = os.path.join(outdir, f"{n}{scene.frame_current:04d}.png")
+        if os.path.exists(src):
+            os.replace(src, os.path.join(outdir, n + ".png"))
+
+    manifest = {
+        "size": [W, H],
+        "scale": ARGS["scale"],
+        "base": "base.png",
+        "encoding": {"transfer": "sRGB", "exposureEV": BAKE_EXPOSURE_EV, "bits": 16,
+                     "decode": "linear = srgb_to_linear(px) * 2^(-exposureEV)"},
+        "blend": "linear = base + sum(level_i * layer_i); bloom; tonemap (AgX approx); encode sRGB",
+        "tonemap": {"curve": "AgX minimal approximation (see tools/art/composite.py)",
+                    "lookPower": 1.40, "lookSaturation": 1.05},
+        "layers": [{"name": n, "file": n + ".png", "kind": layer_kind(n)[0], "index": layer_kind(n)[1]}
+                   for n in written if n != "base"],
+    }
+    with open(os.path.join(outdir, "manifest.json"), "w") as f:
+        json.dump(manifest, f, indent=1)
+    print("BAKED", len(written), "layers to", outdir)
+
+
 def main():
     scene = reset_scene()
     build(scene)
@@ -637,6 +750,9 @@ def main():
         probe(float(sys.argv[i + 1]), float(sys.argv[i + 2]))
         return
     lights_and_camera(scene, tilt_deg=ARGS["tilt"])
+    if ARGS["bake"]:
+        bake_layers(scene)
+        return
     compositor(scene)
     out = os.path.join(ROOT, ARGS["out"])
     os.makedirs(os.path.dirname(out), exist_ok=True)
