@@ -467,7 +467,9 @@ def build(scene):
         bpy.ops.object.shade_smooth()
 
 
-def lights_and_camera(scene):
+def lights_and_camera(scene, w=None, h=None, tilt_deg=0.0):
+    w = W if w is None else w
+    h = H if h is None else h
     world = bpy.data.worlds.new("world")
     world.use_nodes = True
     world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.02, 0.022, 0.025, 1)
@@ -482,7 +484,7 @@ def lights_and_camera(scene):
         data.color = color
         obj = link(bpy.data.objects.new(name, data))
         obj.location = loc
-        direction = Vector((W * PX / 2, -H * PX / 2, 0)) - Vector(loc)
+        direction = Vector((w * PX / 2, -h * PX / 2, 0)) - Vector(loc)
         obj.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
         return obj
 
@@ -494,7 +496,7 @@ def lights_and_camera(scene):
 
     # A big dim softbox overhead that only reflections see, so polished metal
     # (U1 can, jack, tinned pads) reads as metal instead of reflecting black.
-    bpy.ops.mesh.primitive_plane_add(size=3.0, location=(W * PX / 2, -H * PX / 2, 1.6))
+    bpy.ops.mesh.primitive_plane_add(size=3.0, location=(w * PX / 2, -h * PX / 2, 1.6))
     softbox = bpy.context.active_object
     softbox.name = "softbox"
     sb_mat = bpy.data.materials.new("softbox")
@@ -522,9 +524,16 @@ def lights_and_camera(scene):
 
     cam_data = bpy.data.cameras.new("cam")
     cam_data.type = "ORTHO"
-    cam_data.ortho_scale = W * PX
+    cam_data.ortho_scale = w * PX
     cam = link(bpy.data.objects.new("cam", cam_data))
-    cam.location = (W * PX / 2, -H * PX / 2, 1.0)
+    centre = Vector((w * PX / 2, -h * PX / 2, 0.0))
+    if tilt_deg:
+        # Preview only: tip the view back so part heights show.
+        t = math.radians(tilt_deg)
+        cam.rotation_euler = (t, 0.0, 0.0)
+        cam.location = centre + Vector((0.0, -math.sin(t), math.cos(t)))
+    else:
+        cam.location = centre + Vector((0.0, 0.0, 1.0))
     scene.camera = cam
 
 
@@ -589,4 +598,5 @@ def main():
     print("WROTE", out)
 
 
-main()
+if __name__ == "__main__":  # also imported as a helper library by render_parts.py
+    main()
