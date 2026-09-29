@@ -26,13 +26,13 @@ A 2240×1600 render takes about 12 s on an M4 Max (Metal).
 - **Bat toggles replace jumpers and DIP switches.** 3-position toggles for Source (up = partner pair, centre = off, down = LFO/FB) and the delay Mod Source; 2-position toggles for Fast, Wave, LFO logic and the global switches. Option 0 is always "up". The lever leans 34° so its throw reads from straight above.
 - **Touch pads are interdigitated gold (ENIG) combs.** They're two electrodes your finger bridges, the way the Lyra's touch plates work. Each comb has its spine on one half-ring and fingers at a 4 px pitch. They read as sensors, not as flat grey discs (`parts.touch_pad`, `"pad": "comb"`).
 - **Type: IBM Plex Mono Medium** for silkscreen, **Instrument Serif** for the logo. Both are SIL OFL 1.1, vendored in `art/fonts/` with their licence texts, so they're safe to bake into shipped artwork.
+- **Pair level meters.** Each pair module's second row has a 5-LED SMD meter (4 amber plus 1 pink "hot") between Source and Speed. It fills the dead space with something functional; at runtime it's driven by that pair's telemetry `pairPeak`. Emission uses deep hues, because AgX desaturates small bright emitters toward cream; the final tint can be adjusted in the compositor.
 - **Top-down orthographic camera** for now. It keeps hit-testing trivial. A 15–20° tilt reads better for tall parts (see `--tilt` on the parts sheet), and is still an option.
 - **Glow is amber, modest.** Emission above about 3 clips to white under AgX.
 
 ## Open items
 
 - The layer bake (base plus a lit layer per animated element, knob rotor frames) and the native compositor.
-- The module's second row has empty space now that toggles replaced the wider jumpers.
 
 ## Log
 
@@ -42,3 +42,4 @@ A 2240×1600 render takes about 12 s on an M4 Max (Metal).
 - **Style frame v3:** gold interdigitated touch pads.
 - **Style frame v4:** OFL type (Plex Mono and Instrument Serif) replaces Apple system fonts.
 - **Lit preview v5:** a sounding voice also lights its touch pad (the combs glow amber along with the petal), so the "touched" sensor reads at a glance. In the runtime bake this becomes one more lit layer per voice.
+- **v6:** pair level meters (lit preview shows pairs 12, 34 and 56 playing).

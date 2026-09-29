@@ -450,6 +450,13 @@ def build(scene):
                 parts.toggle_switch(tx, ty, 1 if on else -1, s=1.35)
                 text(lab, tx, ty + 32, 8, silk, "center")
 
+    # Pair level meters (driven by telemetry pairPeak at runtime) -----------------
+    if parts:
+        lit_levels = lit_spec.get("meters", [])
+        for k, (mx, my) in enumerate(LAYOUT.get("meters", [])):
+            parts.led_meter(mx, my, lit_count=lit_levels[k] if k < len(lit_levels) else 0)
+            text("LEVEL", mx, my + 20, 8, silk_dim, "center")
+
     # Jumpers: pin headers, a black cap on the selected position -----------------
     pitch = LAYOUT.get("jumperPitch", 40)
     for (pid, x, y, title, labels, sel) in ([] if toggles else LAYOUT["jumpers"]):

@@ -195,6 +195,26 @@ def touch_pad(cx, cy, r=20.0, pitch=4.0, gap=2.2, lit=False):
     poly_curve("pad_comb_b", polys_b, 1.6, gold, z=0.0, flatten=0.35)
 
 
+# ----------------------------------------------------------------------------- indicators
+
+def led_meter(cx, cy, n=5, lit_count=0, pitch=12.0):
+    """A row of 0805 SMD LEDs (amber, the last one pink for 'hot'), centred on (cx, cy)."""
+    m = mats()
+    body = m.setdefault("smd_body", material("smd_body", (0.9, 0.88, 0.82), rough=0.4))
+    for k in range(n):
+        x = cx + (k - (n - 1) / 2) * pitch
+        hot = k == n - 1
+        on = k < lit_count
+        key = ("led_hot" if hot else "led_amb") + ("_on" if on else "_off")
+        if key not in m:
+            # Deep hues: AgX desaturates bright emission on small parts toward cream.
+            col = (1.0, 0.12, 0.3) if hot else (1.0, 0.34, 0.04)
+            m[key] = (material(key, col, rough=0.15, emit=col, emit_strength=1.3) if on
+                      else material(key, tuple(c * 0.28 for c in col), rough=0.15))
+        box("smd_led_body", x - 3.5, cy - 5, 7, 10, 0.0006, body, bevel=0.4)
+        box("smd_led_lens", x - 2.6, cy - 3.2, 5.2, 6.4, 0.0009, m[key], bevel=0.8)
+
+
 # ----------------------------------------------------------------------------- switches & buttons
 
 def toggle_switch(cx, cy, position, s=1.0):
