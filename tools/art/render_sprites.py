@@ -28,7 +28,9 @@ import render_board as rb  # noqa: E402
 CX, CY = 560, 400  # render position on the board (lighting reference)
 KNOB_R = 12.0      # must match render_board's knob_cream(r=12.0)
 TOGGLE_S = 1.35    # must match render_board's toggle_switch(s=1.35)
-SPRITE_PX = {"knob": 64, "toggle": 80}  # the toggle's long lever shadow needs room
+# Room for the long soft shadows the low key light throws to the lower right;
+# assemble_strip.py feathers the last margin so nothing shows a seam.
+SPRITE_PX = {"knob": 96, "toggle": 128}
 
 
 def setup(scene, size_px, samples):

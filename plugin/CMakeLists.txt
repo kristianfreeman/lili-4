@@ -29,7 +29,17 @@ juce_add_plugin(LILI8
     VST3_CATEGORIES Instrument Synth
     COPY_PLUGIN_AFTER_BUILD ${LILI_COPY_PLUGIN})
 
-target_sources(LILI8 PRIVATE PluginProcessor.cpp)
+target_sources(LILI8 PRIVATE PluginProcessor.cpp PluginEditor.cpp)
+
+# Pre-rendered UI art (tools/art/export_ui.py) and the shared board layout.
+juce_add_binary_data(LiliAssets
+    HEADER_NAME LiliAssets.h
+    NAMESPACE LiliAssets
+    SOURCES
+        assets/board.png
+        assets/knob_strip.png
+        assets/toggle_strip.png
+        ${PROJECT_SOURCE_DIR}/art/board.json)
 
 target_compile_definitions(LILI8 PUBLIC
     JUCE_WEB_BROWSER=0
@@ -39,6 +49,7 @@ target_compile_definitions(LILI8 PUBLIC
 target_link_libraries(LILI8
     PRIVATE
         lili::dsp
+        LiliAssets
         juce::juce_audio_utils
     PUBLIC
         juce::juce_recommended_config_flags

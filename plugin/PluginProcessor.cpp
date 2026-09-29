@@ -1,5 +1,7 @@
 #include "PluginProcessor.h"
 
+#include "PluginEditor.h"
+
 #include <juce_audio_utils/juce_audio_utils.h>
 
 namespace {
@@ -142,10 +144,7 @@ lili::Telemetry LiliProcessor::takeTelemetry() {
     return out;
 }
 
-// Generic parameter UI until the rendered circuit-board editor lands.
-juce::AudioProcessorEditor* LiliProcessor::createEditor() {
-    return new juce::GenericAudioProcessorEditor(*this);
-}
+juce::AudioProcessorEditor* LiliProcessor::createEditor() { return new LiliEditor(*this); }
 
 void LiliProcessor::getStateInformation(juce::MemoryBlock& destData) {
     auto tree = state_.copyState();

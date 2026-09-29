@@ -118,4 +118,5 @@ def main():
     print("wrote", out)
 
 
-main()
+if __name__ == "__main__":  # also imported by export_ui.py
+    main()

@@ -9,7 +9,24 @@ import json
 import os
 import sys
 
+import numpy as np
 from PIL import Image
+
+FEATHER = 0.12  # fraction of the frame over which alpha fades to 0 at each edge
+
+
+def feather(img):
+    """Fade alpha to zero toward the frame edges (smoothstep), so shadows never end in a seam."""
+    px = np.asarray(img.convert("RGBA")).astype(np.float64)
+    h, w = px.shape[:2]
+
+    def ramp(n):
+        d = np.minimum(np.arange(n), np.arange(n)[::-1]) / (FEATHER * n)
+        d = np.clip(d, 0.0, 1.0)
+        return d * d * (3 - 2 * d)
+
+    px[..., 3] *= np.outer(ramp(h), ramp(w))
+    return Image.fromarray(np.clip(px + 0.5, 0, 255).astype(np.uint8))  # HxWx4 uint8 -> RGBA
 
 DESCRIPTIONS = {
     "knobStrip": {
@@ -30,11 +47,12 @@ def main():
     name = sys.argv[sys.argv.index("--name") + 1] if "--name" in sys.argv else "knobStrip"
     file = {"knobStrip": "knob_strip.png", "toggleStrip": "toggle_strip.png"}[name]
     files = sorted(glob.glob(os.path.join(frames_dir, "frame_*.png")))
+    # Note: Pillow reads these 16-bit PNGs as 8-bit; the strip is 8-bit sRGB-encoded linear.
     first = Image.open(files[0])
     w, h = first.size
-    strip = Image.new(first.mode, (w, h * len(files)))
+    strip = Image.new("RGBA", (w, h * len(files)))
     for i, f in enumerate(files):
-        strip.paste(Image.open(f), (0, i * h))
+        strip.paste(feather(Image.open(f)), (0, i * h))
     strip.save(os.path.join(layers_dir, file))
 
     path = os.path.join(layers_dir, "manifest.json")

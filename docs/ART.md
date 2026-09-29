@@ -63,6 +63,26 @@ python3 tools/art/composite.py build/art/layers out.png voice0=1 knob:tune1=0.2 
 
 A 2240×1600 render takes about 12 s on an M4 Max (Metal).
 
+### In the plugin (v1 native editor)
+
+`plugin/PluginEditor.cpp` draws the rendered board with plain JUCE graphics. It lays out every control from `art/board.json`, so hit areas match the render exactly:
+- **Knobs:** drawn from the knob strip at the live parameter value. Vertical drag (Shift for fine), double-click to reset, scroll wheel.
+- **Toggles:** drawn from the toggle strip. Click to throw; on 3-way toggles, clicking above or below the pivot moves the lever one position.
+- **Touch pads:** click to latch that sensor. Sounding voices warm the pad.
+- **Pair LED meters:** follow the engine's telemetry.
+- Host automation moves everything. The window is resizable at a fixed aspect ratio.
+
+v1 assets are display-ready 8-bit PNGs from `export_ui.py` (tone mapping baked in), committed in `plugin/assets/`. The glow layers aren't used yet; they need the linear GPU pass.
+
+```sh
+python3 tools/art/export_ui.py build/art/layers plugin/assets   # after a bake + strips
+LILI_SNAPSHOT=/tmp/ed.png <Standalone app binary>                # editor saves a PNG of itself after ~1 s
+```
+
+**Sprite edges.** The low key light throws long, soft shadows, and the world light adds a faint broad occlusion, so a sprite's alpha never quite reaches zero. Sprites are rendered large (knob 96 px, toggle 128 px), and `assemble_strip.py` feathers the outer 12% of each frame to alpha 0, so they never leave a rectangular seam.
+
+**Pillow gotcha.** Pillow reads 16-bit PNGs as 8-bit. The layer tools check the value range instead of assuming 16-bit, but `crop_layers.py` and `assemble_strip.py` currently re-save at 8 bits. This is fine for sRGB-encoded sprites; the GPU pass should load glow layers with a 16-bit-capable reader.
+
 ## Decisions
 
 - **Vintage green board.** Mottled glossy green solder mask over raised copper, HASL (tinned) pads, off-white silkscreen.
@@ -76,7 +96,8 @@ A 2240×1600 render takes about 12 s on an M4 Max (Metal).
 
 ## Open items
 
-- The native JUCE compositor: GPU sum of layers, bloom, AgX, driven by telemetry.
+- GPU pass (OpenGL) for the glow: sum linear glow layers weighted by telemetry, bloom, AgX. v1 draws the static board, sprites, pad warmth and meters in software.
+- Hover readouts (value + units) for knobs.
 
 ## Log
 
@@ -89,3 +110,4 @@ A 2240×1600 render takes about 12 s on an M4 Max (Metal).
 - **v6:** pair level meters (lit preview shows pairs 12, 34 and 56 playing).
 - **Tilt test:** 15° vs top-down compared (`build/art/tilt_compare.png`); stayed top-down.
 - **Layer bake:** light-group bake, linear encoding, reference compositor with fitted AgX look (`build/art/composite_play.png`).
+- **Native editor v1:** rendered board, knob and toggle sprites bound to parameters, mouse control, pad warmth, LED meters. pluginval passes at strictness 10 including its GUI tests; sprite seams fixed by feathering.
