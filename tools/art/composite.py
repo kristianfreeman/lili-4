@@ -61,8 +61,32 @@ def main():
     manifest = json.load(open(os.path.join(layers_dir, "manifest.json")))
     gain = 2.0 ** -manifest["encoding"]["exposureEV"]
     acc = load(os.path.join(layers_dir, manifest["base"]), gain)
+    args = sys.argv[3:]
+
+    # Knob bodies from the filmstrip (a base baked with --no-knobs has only their scales).
+    strip_info = manifest.get("knobStrip")
+    if strip_info:
+        root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        board = json.load(open(os.path.join(root, "art", "board.json")))
+        overrides = {a[5:].split("=")[0]: float(a.split("=")[1]) for a in args if a.startswith("knob:")}
+        raw = np.asarray(Image.open(os.path.join(layers_dir, strip_info["file"]))).astype(np.float64)
+        raw = raw / (65535.0 if raw.max() > 255 else 255.0)
+        fw, fh = strip_info["frameSize"]
+        s = manifest["scale"]
+        for pid, x, y, _label, value in board["knobs"]:
+            value = overrides.get(pid, value)
+            f = round(value * (strip_info["frames"] - 1))
+            frame = raw[f * fh:(f + 1) * fh]
+            rgb = srgb_to_linear(frame[..., :3]) * gain
+            a = frame[..., 3:4]
+            x0, y0 = int((x + 26) * s - fw / 2), int((y + 17) * s - fh / 2)
+            region = acc[y0:y0 + fh, x0:x0 + fw]
+            acc[y0:y0 + fh, x0:x0 + fw] = rgb * a + region * (1 - a)
+
     rects = {layer["name"]: layer.get("rect") for layer in manifest["layers"]}
-    for arg in sys.argv[3:]:
+    for arg in args:
+        if arg.startswith("knob:"):
+            continue
         name, level = arg.split("=")
         img = float(level) * load(os.path.join(layers_dir, name + ".png"), gain)
         x, y, w, h = rects.get(name) or (0, 0, img.shape[1], img.shape[0])

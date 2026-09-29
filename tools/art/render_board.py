@@ -26,8 +26,8 @@ PX = 0.001  # metres per board px
 
 def parse_args():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    args = {"out": "build/art/style_frame.png", "lit": False, "bake": False, "samples": 128, "scale": 2,
-            "tilt": 0.0}
+    args = {"out": "build/art/style_frame.png", "lit": False, "bake": False, "no_knobs": False, "samples": 128,
+            "scale": 2, "tilt": 0.0}
     i = 0
     while i < len(argv):
         a = argv[i]
@@ -35,6 +35,8 @@ def parse_args():
             args["lit"] = True
         elif a == "--bake":
             args["bake"] = True
+        elif a == "--no-knobs":
+            args["no_knobs"] = True
         elif a in ("--out", "--samples", "--scale", "--tilt"):
             args[a[2:]] = argv[i + 1]
             i += 1
@@ -448,7 +450,10 @@ def build(scene):
     if style.get("knob") == "cream":
         for (pid, x, y, label, value) in LAYOUT["knobs"]:
             cx, cy = x + 26, y + 17
-            parts.knob_cream(cx, cy, value, r=12.0)
+            if ARGS["no_knobs"]:
+                parts.knob_ticks(cx, cy, r=12.0)  # bodies come from the knob filmstrip at runtime
+            else:
+                parts.knob_cream(cx, cy, value, r=12.0)
             text(label, cx, cy + 40, 9, silk, "center")
     for (pid, x, y, label, value) in ([] if style.get("knob") == "cream" else LAYOUT["knobs"]):
         cx, cy = x + 26, y + 17

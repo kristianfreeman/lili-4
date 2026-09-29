@@ -144,17 +144,25 @@ def knob_alu(cx, cy, value, r=14.0):
     pointer("alu_line", cx, cy, value, 4.0, r - 2.5, 1.6, 0.0097, m["paint_black"], height=0.0001)
 
 
-def knob_cream(cx, cy, value, r=13.0):
-    """Vintage cream knob: wide skirt with a printed index, fluted cap."""
+def knob_ticks(cx, cy, r=13.0):
+    """The silkscreen scale that goes with knob_cream (printed on the board)."""
+    return scale_ticks(cx, cy, r + 7, r + 10)
+
+
+def knob_cream(cx, cy, value, r=13.0, ticks=True):
+    """Vintage cream knob: wide skirt with a printed index, fluted cap. Returns its objects."""
     m = mats()
-    scale_ticks(cx, cy, r + 7, r + 10)
-    cylinder("cream_skirt", cx, cy, r + 5.5, 0.0024, m["knob_cream"], bevel_px=1.2, verts=128)
+    if ticks:
+        knob_ticks(cx, cy, r)
     flutes = 12
-    radial_prism("cream_cap", cx, cy,
-                 lambda th: r - 1.8 * (0.5 - 0.5 * math.cos(flutes * th)),
-                 0.008, 0.0024, m["knob_cream"], top_bevel_px=2.6)
-    pointer("cream_index", cx, cy, value, r - 0.5, r + 5.0, 1.8, 0.0024, m["paint_black"])
-    pointer("cream_dot", cx, cy, value, r - 5.0, r - 2.5, 2.2, 0.0104, m["paint_black"])
+    return [
+        cylinder("cream_skirt", cx, cy, r + 5.5, 0.0024, m["knob_cream"], bevel_px=1.2, verts=128),
+        radial_prism("cream_cap", cx, cy,
+                     lambda th: r - 1.8 * (0.5 - 0.5 * math.cos(flutes * th)),
+                     0.008, 0.0024, m["knob_cream"], top_bevel_px=2.6),
+        pointer("cream_index", cx, cy, value, r - 0.5, r + 5.0, 1.8, 0.0024, m["paint_black"]),
+        pointer("cream_dot", cx, cy, value, r - 5.0, r - 2.5, 2.2, 0.0104, m["paint_black"]),
+    ]
 
 
 # ----------------------------------------------------------------------------- touch pads
