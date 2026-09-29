@@ -395,8 +395,23 @@ def build(scene):
     lx, ly, logo = LAYOUT["logo"]
     text(logo, lx, ly, 34, silk, "left", SERIF, spacing=1.0)
 
-    # Trimmers (Bourns 3386-style: blue body, white rotor with a slot) -----------
-    for (pid, x, y, label, value) in LAYOUT["knobs"]:
+    style = LAYOUT.get("controlStyle", {})
+    parts = None
+    if style:
+        # Lazy import (parts imports this module for its helpers); blender -P
+        # doesn't put the script's folder on sys.path.
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import parts
+
+    # Knobs: vintage cream (see docs/ART.md), else the placeholder trimmers ---------
+    if style.get("knob") == "cream":
+        for (pid, x, y, label, value) in LAYOUT["knobs"]:
+            cx, cy = x + 26, y + 17
+            parts.knob_cream(cx, cy, value, r=12.0)
+            text(label, cx, cy + 40, 9, silk, "center")
+    for (pid, x, y, label, value) in ([] if style.get("knob") == "cream" else LAYOUT["knobs"]):
         cx, cy = x + 26, y + 17
         box(f"trim_{pid}", cx - 17, cy - 17, 34, 34, 0.0048, blue, bevel=1.6)
         rot = cylinder(f"rotor_{pid}", cx, cy, 12.5, 0.0012, rotor_white, z=0.0048)
@@ -411,9 +426,27 @@ def build(scene):
             cylinder("leg", cx + k * 9, cy + 20, 1.5, 0.0004, tin)
         text(label, cx, cy + 35, 9, silk, "center")
 
+    # Toggles replace jumpers and DIPs: option 0 is "up"; 3-way ones centre on option 1.
+    toggles = style.get("switch") == "toggle"
+    if toggles:
+        for (pid, x, y, title, labels, sel) in LAYOUT["jumpers"]:
+            text(title, x, y + 8, 9, silk_dim, "left")
+            tx, ty = x + 16, y + 38
+            throws = (1, 0, -1) if len(labels) == 3 else (1, -1)
+            parts.toggle_switch(tx, ty, throws[sel], s=1.35)
+            rows = (ty - 15, ty, ty + 15) if len(labels) == 3 else (ty - 12, ty + 12)
+            for lab, ly_ in zip(labels, rows):
+                text(lab, tx + 20, ly_ + 3, 8, silk, "left")
+        for (x, y, title, items) in LAYOUT["dips"]:
+            text(title, x, y + 8, 9, silk_dim, "left")
+            for j, (pid, lab, on) in enumerate(items):
+                tx, ty = x + 16 + 38 * j, y + 38
+                parts.toggle_switch(tx, ty, 1 if on else -1, s=1.35)
+                text(lab, tx, ty + 32, 8, silk, "center")
+
     # Jumpers: pin headers, a black cap on the selected position -----------------
     pitch = LAYOUT.get("jumperPitch", 40)
-    for (pid, x, y, title, labels, sel) in LAYOUT["jumpers"]:
+    for (pid, x, y, title, labels, sel) in ([] if toggles else LAYOUT["jumpers"]):
         text(title, x, y + 8, 9, silk_dim, "left")
         for j, lab in enumerate(labels):
             px_, py_ = x + 17 + pitch * j, y + 26
@@ -424,7 +457,7 @@ def build(scene):
             text(lab, px_, py_ + 22, 9, silk, "center")
 
     # DIP switches --------------------------------------------------------------------
-    for (x, y, title, items) in LAYOUT["dips"]:
+    for (x, y, title, items) in ([] if toggles else LAYOUT["dips"]):
         text(title, x, y + 8, 9, silk_dim, "left")
         n = len(items)
         bw = 12 + 30 * n + 6 * (n - 1)

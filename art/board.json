@@ -56,9 +56,9 @@
     [28, 664, 492, 108], [640, 664, 452, 108]
   ],
   "labels": [
-    [40, 100, "PAIR 1·2", "left", 1], [40, 304, "PAIR 3·4", "left", 1], [40, 508, "GROUP 1234", "left", 1],
-    [1080, 100, "PAIR 5·6", "right", 1], [1080, 304, "PAIR 7·8", "right", 1], [1080, 508, "GROUP 5678", "right", 1],
-    [40, 680, "DUAL MOD DELAY", "left", 1], [652, 680, "OUTPUT · GLOBAL", "left", 1],
+    [40, 96, "PAIR 1·2", "left", 1], [40, 300, "PAIR 3·4", "left", 1], [40, 504, "GROUP 1234", "left", 1],
+    [1080, 96, "PAIR 5·6", "right", 1], [1080, 300, "PAIR 7·8", "right", 1], [1080, 504, "GROUP 5678", "right", 1],
+    [40, 677, "DUAL MOD DELAY", "left", 1], [652, 677, "OUTPUT · GLOBAL", "left", 1],
     [322, 303, "XM", "center", 0], [798, 303, "XM", "center", 0], [652, 440, "TOTAL FB", "left", 0],
     [572, 214, "TP1", "left", 0], [470, 292, "TP2", "right", 0], [650, 292, "TP3", "left", 0],
     [532, 590, "DLY A", "right", 0], [590, 590, "DLY B", "left", 0],
@@ -78,18 +78,19 @@
     ["tune7", 828, 312, "TUNE 7", 0.31], ["tune8", 890, 312, "TUNE 8", 0.63], ["sharp78", 952, 312, "SHARP", 0.5], ["mod78", 1014, 312, "MOD", 0.37],
     ["pitch5678", 828, 516, "PITCH", 0.52], ["hold5678", 890, 516, "HOLD", 0.65],
     ["lfoFreqA", 440, 548, "FREQ A", 0.41], ["lfoFreqB", 632, 548, "FREQ B", 0.69],
-    ["delTime1", 40, 690, "TIME 1", 0.57], ["delTime2", 90, 690, "TIME 2", 0.33], ["delFeedback", 140, 690, "FDBK", 0.76], ["delMix", 190, 690, "MIX", 0.54],
-    ["delMod1", 240, 690, "MOD 1", 0.39], ["delMod2", 290, 690, "MOD 2", 0.59],
-    ["distDrive", 656, 690, "DRIVE", 0.7], ["distMix", 712, 690, "MIX", 0.5], ["volume", 768, 690, "VOL", 0.8]
+    ["delTime1", 40, 698, "TIME 1", 0.57], ["delTime2", 96, 698, "TIME 2", 0.33], ["delFeedback", 152, 698, "FDBK", 0.76], ["delMix", 208, 698, "MIX", 0.54],
+    ["delMod1", 264, 698, "MOD 1", 0.39], ["delMod2", 320, 698, "MOD 2", 0.59],
+    ["distDrive", 656, 698, "DRIVE", 0.7], ["distMix", 712, 698, "MIX", 0.5], ["volume", 768, 698, "VOL", 0.8]
   ],
+  "controlStyle": {"knob": "cream", "switch": "toggle"},
   "jumperPitch": 34,
   "jumpers": [
     ["source12", 44, 196, "SOURCE", ["34", "OFF", "LFO"], 0],
     ["source34", 44, 400, "SOURCE", ["12", "OFF", "LFO"], 1],
     ["source56", 828, 196, "SOURCE", ["78", "OFF", "LFO"], 2],
     ["source78", 828, 400, "SOURCE", ["56", "OFF", "LFO"], 1],
-    ["delSource", 338, 682, "MOD SRC", ["SELF", "OFF", "LFO"], 2],
-    ["delWaveform", 446, 682, "WAVE", ["TRI", "SQR"], 0],
+    ["delSource", 382, 682, "MOD SRC", ["SELF", "OFF", "LFO"], 2],
+    ["delWaveform", 450, 682, "WAVE", ["TRI", "SQR"], 0],
     ["lfoAndOr", 1022, 682, "LFO LOGIC", ["AND", "OR"], 0]
   ],
   "dips": [

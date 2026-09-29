@@ -1,0 +1,41 @@
+# LILI-8 art direction and pipeline
+
+The UI is pre-rendered artwork (Blender), composited natively at runtime and
+driven by engine telemetry. There is no web view or JavaScript in the plugin.
+
+## Pipeline
+
+| File | Role |
+|------|------|
+| `art/board.json` | Layout: every path, part and control position in board px (1120×800). Also read by the future native editor for hit areas. |
+| `tools/art/render_board.py` | Builds the board in Cycles from the layout and renders it. `--lit` previews the playing state. |
+| `tools/art/parts.py` | Detailed control models (knobs, toggles, slide switch, tact button). |
+| `tools/art/render_parts.py` | Comparison sheet of control styles (`--tilt`, `--scale`). |
+
+```sh
+blender -b -P tools/art/render_board.py -- --out build/art/board.png [--lit] [--samples 128] [--scale 2]
+blender -b -P tools/art/render_parts.py -- --out build/art/parts.png [--tilt 28] [--scale 4]
+```
+
+A 2240×1600 render takes about 12 s on an M4 Max (Metal).
+
+## Decisions
+
+- **Vintage green board.** Mottled glossy green solder mask over raised copper, HASL (tinned) pads, off-white silkscreen.
+- **Vintage cream knobs.** A fluted cap on a wide skirt, with a printed index and a silkscreen scale (11 ticks over 270°). Chosen over refined trimmers, fluted black and machined aluminium (see `render_parts.py`). The knob is about 1.5× the old trimmer's footprint, so it reads at plugin size.
+- **Bat toggles replace jumpers and DIP switches.** 3-position toggles for Source (up = partner pair, centre = off, down = LFO/FB) and the delay Mod Source; 2-position toggles for Fast, Wave, LFO logic and the global switches. Option 0 is always "up". The lever leans 34° so its throw reads from straight above.
+- **Top-down orthographic camera** for now. It keeps hit-testing trivial. A 15–20° tilt reads better for tall parts (see `--tilt` on the parts sheet), and is still an option.
+- **Glow is amber, modest.** Emission above about 3 clips to white under AgX.
+
+## Open items
+
+- Silkscreen uses Apple's Menlo and Georgia. These are fine for style frames only; shipped art needs an OFL font (e.g. IBM Plex Mono, plus a serif for the logo).
+- The layer bake (base plus a lit layer per animated element, knob rotor frames) and the native compositor.
+- The touch pads read flat grey at plugin size.
+- The module's second row has empty space now that toggles replaced the wider jumpers.
+
+## Log
+
+- **Style frame v1:** placeholder primitives, blue trimmers, DIPs, jumpers.
+- **Parts sheet:** four knob styles and three switch styles compared.
+- **Style frame v2:** cream knobs, bat toggles, headings and bottom row re-spaced so scales don't collide.

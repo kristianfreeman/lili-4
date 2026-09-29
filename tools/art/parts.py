@@ -147,7 +147,7 @@ def knob_alu(cx, cy, value, r=14.0):
 def knob_cream(cx, cy, value, r=13.0):
     """Vintage cream knob: wide skirt with a printed index, fluted cap."""
     m = mats()
-    scale_ticks(cx, cy, r + 8, r + 12)
+    scale_ticks(cx, cy, r + 7, r + 10)
     cylinder("cream_skirt", cx, cy, r + 5.5, 0.0024, m["knob_cream"], bevel_px=1.2, verts=128)
     flutes = 12
     radial_prism("cream_cap", cx, cy,
@@ -159,25 +159,28 @@ def knob_cream(cx, cy, value, r=13.0):
 
 # ----------------------------------------------------------------------------- switches & buttons
 
-def toggle_switch(cx, cy, position):
-    """Bat-handle toggle. position: +1 up, 0 centre, -1 down (in board view)."""
+def toggle_switch(cx, cy, position, s=1.0):
+    """Bat-handle toggle. position: +1 up, 0 centre, -1 down (in board view); s scales it."""
     m = mats()
-    bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=9 * PX, depth=0.0022)
+    bpy.ops.mesh.primitive_cylinder_add(vertices=6, radius=9 * s * PX, depth=0.0022 * s)
     nut = bpy.context.active_object
-    nut.location = (cx * PX, -cy * PX, 0.0011)
+    nut.location = (cx * PX, -cy * PX, 0.0011 * s)
     nut.data.materials.append(m["nickel"])
-    radial_prism("tog_bush", cx, cy, lambda th: 5.6 - 0.35 * abs(math.sin(10 * th)), 0.0045, 0.0022,
-                 m["nickel"], segments=160, top_bevel_px=0.6)
-    tilt = math.radians(24) * position
-    bpy.ops.mesh.primitive_cone_add(vertices=48, radius1=2.0 * PX, radius2=3.3 * PX, depth=0.013)
+    radial_prism("tog_bush", cx, cy, lambda th: (5.6 - 0.35 * abs(math.sin(10 * th))) * s, 0.0045 * s,
+                 0.0022 * s, m["nickel"], segments=160, top_bevel_px=0.6)
+    # A steep lean and a long bat so the throw reads from straight above.
+    tilt = math.radians(34) * position
+    length = 0.016 * s
+    pivot = 0.0067 * s
+    bpy.ops.mesh.primitive_cone_add(vertices=48, radius1=2.0 * s * PX, radius2=3.3 * s * PX, depth=length)
     bat = bpy.context.active_object
     bat.data.materials.append(m["chrome"])
     bpy.ops.object.shade_smooth()
     # pivot at the bushing top, lean toward -y (board "up") for position +1
-    bat.location = (cx * PX, -cy * PX + math.sin(tilt) * 0.0065, 0.0067 + math.cos(tilt) * 0.0065)
+    bat.location = (cx * PX, -cy * PX + math.sin(tilt) * length / 2, pivot + math.cos(tilt) * length / 2)
     bat.rotation_euler.x = -tilt
-    bpy.ops.mesh.primitive_uv_sphere_add(radius=3.4 * PX, location=(
-        cx * PX, -cy * PX + math.sin(tilt) * 0.013, 0.0067 + math.cos(tilt) * 0.013))
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=3.4 * s * PX, location=(
+        cx * PX, -cy * PX + math.sin(tilt) * length, pivot + math.cos(tilt) * length))
     tip = bpy.context.active_object
     tip.scale.z = 0.8
     tip.data.materials.append(m["chrome"])
