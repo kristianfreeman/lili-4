@@ -22,6 +22,7 @@ class LiliEditor final : public juce::AudioProcessorEditor, private juce::Timer 
     void mouseDrag(const juce::MouseEvent& e) override;
     void mouseUp(const juce::MouseEvent& e) override;
     void mouseDoubleClick(const juce::MouseEvent& e) override;
+    void mouseExit(const juce::MouseEvent& e) override;
     void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override;
 
   private:
@@ -32,6 +33,8 @@ class LiliEditor final : public juce::AudioProcessorEditor, private juce::Timer 
         juce::RangedAudioParameter* param;
         juce::Point<float> centre; // board px
         bool upIsHigh = false;     // Toggle2: is "lever up" the parameter's 1.0?
+        juce::String label;        // silkscreen name, for the hover readout
+        juce::StringArray options; // toggle positions' legends (jumper-style toggles)
     };
 
     // A pre-rendered glow delta (tools/art/export_ui.py), kept only as runs of
@@ -62,6 +65,9 @@ class LiliEditor final : public juce::AudioProcessorEditor, private juce::Timer 
     void setNormalised(Control& c, float v);
     void drawSprite(juce::Graphics& g, const juce::Image& strip, int frames, int frame,
                     juce::Point<float> centre);
+    juce::String readoutText(const Control& c) const;
+    juce::Rectangle<float> readoutArea(const Control& c) const; // board px
+    void setReadout(Control* c);
 
     LiliProcessor& processor_;
     juce::Image board_;
@@ -77,6 +83,9 @@ class LiliEditor final : public juce::AudioProcessorEditor, private juce::Timer 
     bool metersWereLit_ = false;
     float scale_ = 1.0f;
     int snapshotCountdown_ = 30; // timer ticks until the optional LILI_SNAPSHOT capture
+
+    juce::Font mono_{juce::FontOptions{}};
+    Control* readout_ = nullptr; // control whose value tag is shown (hovered or dragged)
 
     Control* dragging_ = nullptr;
     float dragStartY_ = 0.0f;

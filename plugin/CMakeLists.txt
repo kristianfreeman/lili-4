@@ -42,7 +42,8 @@ juce_add_binary_data(LiliAssets
         assets/toggle_strip.png
         assets/glow/glow.json
         ${lili_glow_assets}
-        ${PROJECT_SOURCE_DIR}/art/board.json)
+        ${PROJECT_SOURCE_DIR}/art/board.json
+        ${PROJECT_SOURCE_DIR}/art/fonts/IBMPlexMono-Medium.ttf)
 
 target_compile_definitions(LILI8 PUBLIC
     JUCE_WEB_BROWSER=0

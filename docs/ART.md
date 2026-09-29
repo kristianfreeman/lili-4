@@ -88,6 +88,16 @@ v1 assets are display-ready 8-bit PNGs from `export_ui.py` (tone mapping baked i
 - **Cost:** in the standalone app, about 12–16% "CPU" with five voices glowing vs about 6–12% idle. The idle figure is mostly the standalone's own audio-device threads waiting in the kernel (the profiler shows the engine and our copies as tiny), so the glow adds roughly 3–5% of a core.
 - **Debug:** `LILI_SNAPSHOT_SENSORS=136` latches sensors 1, 3, 6 and mutes the output, for glow snapshots.
 
+**Hover readouts.** Hovering or dragging a control shows a small amber tag in the embedded IBM Plex Mono.
+- Knobs show musical units:
+  - Tune in Hz, computed by `lili::Engine::voiceFrequency` from the live parameters, so it includes the group Pitch knob and is exactly what plays;
+  - LFO rate in Hz; delay time in ms or s; feedback as loop gain;
+  - Pitch as a × multiplier; the rest as %.
+- Toggles show their current legend (e.g. "SOURCE · LFO"); pads show LATCHED or OFF.
+- `LILI_SNAPSHOT_READOUT=<param id>` shows a tag in snapshots.
+
+The readout exposed a real bug: JUCE's `AudioParameterFloat(id, name, min, max, default)` constructor quantises to **0.01 steps**. Tune moved in about 1.1-semitone jumps, delay time in coarse leaps, and the 64/127 defaults snapped to 0.50. Parameters now use an explicit continuous `NormalisableRange`.
+
 ```sh
 python3 tools/art/export_ui.py build/art/layers plugin/assets   # after a bake + strips
 LILI_SNAPSHOT=/tmp/ed.png <Standalone app binary>                # editor saves a PNG of itself after ~1 s
@@ -111,7 +121,6 @@ LILI_SNAPSHOT=/tmp/ed.png <Standalone app binary>                # editor saves 
 ## Open items
 
 - Optional GPU pass (OpenGL): linear-light glow sum plus real bloom. The software glow covers the look for now.
-- Hover readouts (value + units) for knobs.
 
 ## Log
 

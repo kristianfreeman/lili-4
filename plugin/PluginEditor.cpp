@@ -24,6 +24,8 @@ LiliEditor::LiliEditor(LiliProcessor& owner) : AudioProcessorEditor(owner), proc
     board_ = loadImage(LiliAssets::board_png, LiliAssets::board_pngSize);
     knobStrip_ = loadImage(LiliAssets::knob_strip_png, LiliAssets::knob_strip_pngSize);
     toggleStrip_ = loadImage(LiliAssets::toggle_strip_png, LiliAssets::toggle_strip_pngSize);
+    mono_ = juce::Font(juce::FontOptions(juce::Typeface::createSystemTypefaceFor(
+        LiliAssets::IBMPlexMonoMedium_ttf, LiliAssets::IBMPlexMonoMedium_ttfSize)));
     pristine_ = board_.convertedToFormat(juce::Image::ARGB);
     frame_ = pristine_.createCopy();
     loadLayout();
@@ -40,6 +42,12 @@ LiliEditor::LiliEditor(LiliProcessor& owner) : AudioProcessorEditor(owner), proc
         }
         if (auto* vol = processor_.state().getParameter("volume")) {
             vol->setValueNotifyingHost(0.0f);
+        }
+    }
+    const auto readoutId = juce::SystemStats::getEnvironmentVariable("LILI_SNAPSHOT_READOUT", {});
+    for (auto& c : controls_) {
+        if (readoutId.isNotEmpty() && c.param->getParameterID() == readoutId) {
+            readout_ = &c; // show this control's value tag in the snapshot
         }
     }
 
@@ -62,15 +70,23 @@ void LiliEditor::loadLayout() {
 
     for (const auto& k : *layout["knobs"].getArray()) {
         if (auto* p = param(k[0])) {
-            controls_.push_back({Kind::Knob, p, {num(k[1]) + 26.0f, num(k[2]) + 17.0f}});
+            controls_.push_back(
+                {Kind::Knob, p, {num(k[1]) + 26.0f, num(k[2]) + 17.0f}, false, k[3].toString(), {}});
         }
     }
     for (const auto& j : *layout["jumpers"].getArray()) {
         if (auto* p = param(j[0])) {
-            const bool three = j[4].size() == 3;
+            juce::StringArray options;
+            for (const auto& o : *j[4].getArray()) {
+                options.add(o.toString());
+            }
             // Choice option 0 is "up": normalised 0.0 is up.
-            controls_.push_back(
-                {three ? Kind::Toggle3 : Kind::Toggle2, p, {num(j[1]) + 16.0f, num(j[2]) + 38.0f}});
+            controls_.push_back({options.size() == 3 ? Kind::Toggle3 : Kind::Toggle2,
+                                 p,
+                                 {num(j[1]) + 16.0f, num(j[2]) + 38.0f},
+                                 false,
+                                 j[3].toString(),
+                                 options});
         }
     }
     for (const auto& d : *layout["dips"].getArray()) {
@@ -81,14 +97,17 @@ void LiliEditor::loadLayout() {
                 controls_.push_back({Kind::Toggle2,
                                      p,
                                      {num(d[0]) + 16.0f + 38.0f * static_cast<float>(i), num(d[1]) + 38.0f},
-                                     true});
+                                     true,
+                                     items[i][1].toString(),
+                                     {}});
             }
         }
     }
     const auto& pads = *layout["pads"].getArray();
     for (int i = 0; i < pads.size(); ++i) {
         if (auto* p = param("sensor" + juce::String(i + 1))) {
-            controls_.push_back({Kind::Pad, p, {num(pads[i][0]), num(pads[i][1])}});
+            controls_.push_back(
+                {Kind::Pad, p, {num(pads[i][0]), num(pads[i][1])}, false, "S" + juce::String(i + 1), {}});
         }
     }
     for (const auto& m : *layout["meters"].getArray()) {
@@ -292,9 +311,85 @@ void LiliEditor::paint(juce::Graphics& g) {
             drawSprite(g, toggleStrip_, 3, frameFor(c), c.centre);
         }
     }
+
+    // Value tag for the hovered or dragged control, in the silkscreen face.
+    if (readout_ != nullptr) {
+        const auto area = readoutArea(*readout_) * scale_;
+        g.setColour(juce::Colour(0xf00a0f0c));
+        g.fillRoundedRectangle(area, 3.0f * scale_);
+        g.setColour(kAmber.withAlpha(0.8f));
+        g.drawRoundedRectangle(area, 3.0f * scale_, 1.0f * scale_);
+        g.setColour(kAmber);
+        g.setFont(mono_.withHeight(11.0f * scale_));
+        g.drawText(readoutText(*readout_), area, juce::Justification::centred, false);
+    }
 }
 
 void LiliEditor::resized() { scale_ = static_cast<float>(getWidth()) / kBoardW; }
+
+juce::String LiliEditor::readoutText(const Control& c) const {
+    const auto id = c.param->getParameterID();
+    const float v = c.param->getValue();
+    juce::String value;
+    if (c.kind == Kind::Knob) {
+        if (id.startsWith("tune")) {
+            // Exactly what the engine plays: tune curve x group pitch multiplier.
+            lili::Params p;
+            auto& state = processor_.state();
+            for (size_t i = 0; i < lili::kNumParams; ++i) {
+                const auto& info = lili::kParamInfo[i];
+                if (const auto* raw =
+                        state.getRawParameterValue(juce::String(info.id.data(), info.id.size()))) {
+                    lili::setParam(p, i, raw->load());
+                }
+            }
+            const float hz = lili::Engine::voiceFrequency(p, id.getTrailingIntValue() - 1);
+            value = hz < 1000.0f ? juce::String(hz, hz < 100.0f ? 1 : 0) + " Hz"
+                                 : juce::String(hz / 1000.0f, 2) + " kHz";
+        } else if (id.startsWith("pitch")) {
+            value = juce::String::fromUTF8("\xc3\x97") + juce::String(0.01f + 1.99f * v, 2);
+        } else if (id.startsWith("lfoFreq")) {
+            const float hz = lili::mtof(127.0f * v * v - 75.0f);
+            value = juce::String(hz, hz < 1.0f ? 2 : 1) + " Hz";
+        } else if (id.startsWith("delTime")) {
+            const float ms = 1.45125f * std::exp2(12.0f * v);
+            value = ms < 1000.0f ? juce::String(ms, ms < 10.0f ? 1 : 0) + " ms"
+                                 : juce::String(ms / 1000.0f, 2) + " s";
+        } else if (id == "delFeedback") {
+            value = juce::String(v * std::exp2(2.0f * v), 2);
+        } else {
+            value = juce::String(juce::roundToInt(v * 100.0f)) + "%";
+        }
+    } else if (!c.options.isEmpty()) {
+        const int index = c.kind == Kind::Toggle3 ? juce::roundToInt(v * 2.0f) : juce::roundToInt(v);
+        value = c.options[juce::jlimit(0, c.options.size() - 1, index)];
+    } else if (c.kind == Kind::Pad) {
+        value = v >= 0.5f ? "LATCHED" : "OFF";
+    } else {
+        value = v >= 0.5f ? "ON" : "OFF";
+    }
+    return c.label + juce::String::fromUTF8(" \xc2\xb7 ") + value;
+}
+
+juce::Rectangle<float> LiliEditor::readoutArea(const Control& c) const {
+    const auto text = readoutText(c);
+    const float w = juce::GlyphArrangement::getStringWidth(mono_.withHeight(11.0f), text) + 16.0f;
+    const float above = c.kind == Kind::Knob ? 34.0f : c.kind == Kind::Pad ? 28.0f : 30.0f;
+    return juce::Rectangle<float>(w, 20.0f).withCentre(c.centre.translated(0.0f, -above - 10.0f));
+}
+
+void LiliEditor::setReadout(Control* c) {
+    if (c == readout_) {
+        return;
+    }
+    if (readout_ != nullptr) {
+        repaintBoardArea(readoutArea(*readout_));
+    }
+    readout_ = c;
+    if (readout_ != nullptr) {
+        repaintBoardArea(readoutArea(*readout_));
+    }
+}
 
 void LiliEditor::timerCallback() {
     telemetry_ = processor_.takeTelemetry();
@@ -310,13 +405,17 @@ void LiliEditor::timerCallback() {
                                                       out);
         }
     }
-    // Repaint only what changed: a full-board repaint at 30 fps costs ~15% of a core.
+    // Repaint only what changed.
     for (size_t i = 0; i < controls_.size(); ++i) {
         const float v = controls_[i].param->getValue();
         if (!juce::exactlyEqual(v, lastValues_[i])) {
             lastValues_[i] = v;
             repaintBoardArea(
                 juce::Rectangle<float>(130.0f, 130.0f).withCentre(controls_[i].centre)); // sprite + shadow
+            if (&controls_[i] == readout_) {
+                // the tag's text (and width) changed too, e.g. from automation
+                repaintBoardArea(readoutArea(controls_[i]).withSizeKeepingCentre(260.0f, 24.0f));
+            }
         }
     }
     const auto glowArea = updateGlow(1.0f / 30.0f);
@@ -351,8 +450,15 @@ void LiliEditor::setNormalised(Control& c, float v) {
     c.param->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, v));
 }
 
+void LiliEditor::mouseExit(const juce::MouseEvent& /*e*/) {
+    if (dragging_ == nullptr) {
+        setReadout(nullptr);
+    }
+}
+
 void LiliEditor::mouseMove(const juce::MouseEvent& e) {
-    const auto* c = controlAt(toBoard(e.position));
+    auto* c = controlAt(toBoard(e.position));
+    setReadout(c);
     setMouseCursor(c == nullptr            ? juce::MouseCursor::NormalCursor
                    : c->kind == Kind::Knob ? juce::MouseCursor::UpDownResizeCursor
                                            : juce::MouseCursor::PointingHandCursor);
@@ -398,11 +504,12 @@ void LiliEditor::mouseDrag(const juce::MouseEvent& e) {
     repaint();
 }
 
-void LiliEditor::mouseUp(const juce::MouseEvent& /*e*/) {
+void LiliEditor::mouseUp(const juce::MouseEvent& e) {
     if (dragging_ != nullptr) {
         dragging_->param->endChangeGesture();
         dragging_ = nullptr;
     }
+    setReadout(controlAt(toBoard(e.position))); // the drag may have ended off the knob
 }
 
 void LiliEditor::mouseDoubleClick(const juce::MouseEvent& e) {

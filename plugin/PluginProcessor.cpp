@@ -17,7 +17,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout LiliProcessor::createLayout(
         const auto name = toJuce(info.name);
         switch (info.kind) {
         case lili::ParamKind::Continuous:
-            layout.add(std::make_unique<juce::AudioParameterFloat>(id, name, 0.0f, 1.0f, info.defaultValue));
+            // Explicit range: the (min, max, default) constructor quantises to 0.01 steps, which
+            // made Tune move in ~1.1-semitone jumps and snapped the 64/127 defaults to 0.50.
+            layout.add(std::make_unique<juce::AudioParameterFloat>(
+                id, name, juce::NormalisableRange<float>(0.0f, 1.0f), info.defaultValue));
             break;
         case lili::ParamKind::Toggle:
             layout.add(std::make_unique<juce::AudioParameterBool>(id, name, info.defaultValue >= 0.5f));
