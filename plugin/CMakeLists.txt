@@ -32,6 +32,7 @@ juce_add_plugin(LILI8
 target_sources(LILI8 PRIVATE PluginProcessor.cpp PluginEditor.cpp)
 
 # Pre-rendered UI art (tools/art/export_ui.py) and the shared board layout.
+file(GLOB lili_glow_assets CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/glow/*.png)
 juce_add_binary_data(LiliAssets
     HEADER_NAME LiliAssets.h
     NAMESPACE LiliAssets
@@ -39,6 +40,8 @@ juce_add_binary_data(LiliAssets
         assets/board.png
         assets/knob_strip.png
         assets/toggle_strip.png
+        assets/glow/glow.json
+        ${lili_glow_assets}
         ${PROJECT_SOURCE_DIR}/art/board.json)
 
 target_compile_definitions(LILI8 PUBLIC

@@ -24,7 +24,24 @@ LiliEditor::LiliEditor(LiliProcessor& owner) : AudioProcessorEditor(owner), proc
     board_ = loadImage(LiliAssets::board_png, LiliAssets::board_pngSize);
     knobStrip_ = loadImage(LiliAssets::knob_strip_png, LiliAssets::knob_strip_pngSize);
     toggleStrip_ = loadImage(LiliAssets::toggle_strip_png, LiliAssets::toggle_strip_pngSize);
+    pristine_ = board_.convertedToFormat(juce::Image::ARGB);
+    frame_ = pristine_.createCopy();
     loadLayout();
+    loadGlow();
+
+    // Debug aid for snapshots: LILI_SNAPSHOT_SENSORS=136 latches sensors 1, 3, 6
+    // and mutes the output (telemetry is measured before the volume stage).
+    const auto demo = juce::SystemStats::getEnvironmentVariable("LILI_SNAPSHOT_SENSORS", {});
+    if (demo.isNotEmpty()) {
+        for (const auto ch : demo) {
+            if (auto* p = processor_.state().getParameter("sensor" + juce::String::charToString(ch))) {
+                p->setValueNotifyingHost(1.0f);
+            }
+        }
+        if (auto* vol = processor_.state().getParameter("volume")) {
+            vol->setValueNotifyingHost(0.0f);
+        }
+    }
 
     setResizable(true, true);
     setResizeLimits(784, 560, 1680, 1200);
@@ -80,6 +97,147 @@ void LiliEditor::loadLayout() {
     lastValues_.assign(controls_.size(), -1.0f);
 }
 
+void LiliEditor::loadGlow() {
+    const auto manifest = juce::JSON::parse(
+        juce::String::createStringFromData(LiliAssets::glow_json, LiliAssets::glow_jsonSize));
+    const auto* rects = manifest["rects"].getDynamicObject();
+    if (rects == nullptr) {
+        return;
+    }
+    constexpr int kSignificant = 2; // deltas below this (of 255) are invisible
+    for (const auto& prop : rects->getProperties()) {
+        const auto name = prop.name.toString();
+        int size = 0;
+        const auto* data = LiliAssets::getNamedResource((name + "_png").toRawUTF8(), size);
+        if (data == nullptr) {
+            continue;
+        }
+        const auto img = juce::ImageCache::getFromMemory(data, size);
+        const int rx = static_cast<int>(prop.value[0]);
+        const int ry = static_cast<int>(prop.value[1]);
+        const juce::Image::BitmapData src(img, juce::Image::BitmapData::readOnly);
+        GlowLayer layer;
+        layer.name = name;
+        for (int y = 0; y < img.getHeight(); ++y) {
+            int start = -1;
+            for (int x = 0; x <= img.getWidth(); ++x) {
+                const auto c = x < img.getWidth() ? src.getPixelColour(x, y) : juce::Colour();
+                const bool lit =
+                    x < img.getWidth() && std::max({c.getRed(), c.getGreen(), c.getBlue()}) >= kSignificant;
+                if (lit) {
+                    if (start < 0) {
+                        start = x;
+                        layer.spans.push_back({ry + y, rx + x, rx + x, layer.bgr.size()});
+                    }
+                    // byte order of a JUCE ARGB pixel in memory (little-endian): b, g, r, a
+                    layer.bgr.insert(layer.bgr.end(), {c.getBlue(), c.getGreen(), c.getRed()});
+                    layer.spans.back().x1 = rx + x + 1;
+                } else {
+                    start = -1;
+                }
+            }
+        }
+        layer.bounds = {rx, ry, img.getWidth(), img.getHeight()};
+        glow_.push_back(std::move(layer));
+    }
+}
+
+float LiliEditor::paramValue(const juce::String& id) {
+    const auto* p = processor_.state().getParameter(id);
+    return p != nullptr ? p->getValue() : 0.0f;
+}
+
+float LiliEditor::glowTarget(const juce::String& name) {
+    const auto& t = telemetry_;
+    const auto clamp01 = [](float v) { return juce::jlimit(0.0f, 1.0f, v); };
+    if (name.startsWith("voice")) {
+        return t.voiceGain[static_cast<size_t>(name.getTrailingIntValue())];
+    }
+    if (name == "mix") {
+        return clamp01((t.pairPeak[0] + t.pairPeak[1] + t.pairPeak[2] + t.pairPeak[3]) * 0.8f);
+    }
+    if (name.startsWith("delay")) {
+        const auto k = static_cast<size_t>(name.getTrailingIntValue());
+        return clamp01(t.delayPeak[k] * 4.0f) * (paramValue("delMix") > 0.01f ? 1.0f : 0.35f);
+    }
+    if (name.startsWith("xmod")) {
+        // Lit when a pair on that side takes its partner as FM source (Source option 0).
+        const size_t a = name.endsWith("0") ? 0 : 2;
+        static const char* const ids[] = {"source12", "source34", "source56", "source78"};
+        float level = 0.0f;
+        for (size_t p = a; p < a + 2; ++p) {
+            if (juce::roundToInt(paramValue(ids[p]) * 2.0f) == 0) {
+                level = std::max(level, t.fmPeak[p] * 1.5f);
+            }
+        }
+        return clamp01(level);
+    }
+    if (name == "totalfb") {
+        return paramValue("totalFb") >= 0.5f ? clamp01(t.totalFbPeak * 2.0f) : 0.0f;
+    }
+    if (name.startsWith("lfo")) {
+        // The leaf LEDs blink with the real LFO squares; too fast to blink -> steady glow.
+        const bool b = name.endsWith("1");
+        const float hz = b ? t.lfoHzB : t.lfoHzA;
+        const float phase = b ? t.lfoPhaseB : t.lfoPhaseA;
+        return hz > 12.0f ? 0.6f : (std::cos(juce::MathConstants<float>::twoPi * phase) > 0.0f ? 1.0f : 0.0f);
+    }
+    if (name == "stamens") {
+        return clamp01(t.outPeak * 1.2f);
+    }
+    return 0.0f;
+}
+
+juce::Rectangle<int> LiliEditor::updateGlow(float dt) {
+    const float decay = std::exp(-dt / 0.15f); // instant attack, 150 ms release
+    juce::Rectangle<int> dirty;
+    for (auto& layer : glow_) {
+        layer.shown = std::max(glowTarget(layer.name), layer.shown * decay);
+        if (layer.shown < 0.004f) {
+            layer.shown = 0.0f;
+        }
+        if (std::abs(layer.shown - layer.drawn) > 0.004f) {
+            dirty = dirty.getUnion(layer.bounds);
+        }
+    }
+    if (dirty.isEmpty()) {
+        return {};
+    }
+
+    const juce::Image::BitmapData dst(frame_, juce::Image::BitmapData::readWrite);
+    const juce::Image::BitmapData orig(pristine_, juce::Image::BitmapData::readOnly);
+    // Undo last frame's glow (layers overlap, so restore everything before adding).
+    for (const auto& layer : glow_) {
+        if (layer.drawn > 0.0f) {
+            for (const auto& s : layer.spans) {
+                std::memcpy(dst.getPixelPointer(s.x0, s.y), orig.getPixelPointer(s.x0, s.y),
+                            static_cast<size_t>((s.x1 - s.x0) * dst.pixelStride));
+            }
+        }
+    }
+    for (auto& layer : glow_) {
+        layer.drawn = layer.shown;
+        if (layer.shown <= 0.0f) {
+            continue;
+        }
+        const int q = juce::roundToInt(layer.shown * 256.0f);
+        for (const auto& s : layer.spans) {
+            auto* d = dst.getPixelPointer(s.x0, s.y);
+            const auto* g = layer.bgr.data() + s.offset;
+            for (int x = s.x0; x < s.x1; ++x, d += dst.pixelStride, g += 3) {
+                for (int c = 0; c < 3; ++c) {
+                    d[c] = static_cast<uint8_t>(std::min(255, d[c] + ((g[c] * q) >> 8)));
+                }
+            }
+        }
+    }
+    return dirty;
+}
+
+void LiliEditor::repaintBoardArea(juce::Rectangle<float> boardArea) {
+    repaint((boardArea * scale_).expanded(2.0f).getSmallestIntegerContainer());
+}
+
 int LiliEditor::frameFor(const Control& c) const {
     const float v = c.param->getValue();
     switch (c.kind) {
@@ -106,27 +264,10 @@ void LiliEditor::drawSprite(juce::Graphics& g, const juce::Image& strip, int fra
 
 void LiliEditor::paint(juce::Graphics& g) {
     g.setImageResamplingQuality(juce::Graphics::highResamplingQuality);
-    g.drawImage(board_, getLocalBounds().toFloat());
-
-    // Sounding voices warm their touch pads (the GPU pass will add real glow).
-    int voice = 0;
-    for (const auto& c : controls_) {
-        if (c.kind != Kind::Pad) {
-            continue;
-        }
-        const float gain = telemetry_.voiceGain[static_cast<size_t>(voice++)];
-        if (gain > 0.01f) {
-            const auto r = kPadRadius * 1.25f * scale_;
-            juce::ColourGradient glow(kAmber.withAlpha(0.45f * gain), c.centre * scale_,
-                                      kAmber.withAlpha(0.0f), c.centre * scale_ + juce::Point<float>(r, 0.0f),
-                                      true);
-            g.setGradientFill(glow);
-            g.fillEllipse(juce::Rectangle<float>(2 * r, 2 * r).withCentre(c.centre * scale_));
-        }
-    }
+    g.drawImage(frame_, getLocalBounds().toFloat()); // board + audio-driven glow (updateGlow)
 
     // Pair level meters: 4 amber + 1 pink "hot" LED.
-    constexpr std::array<float, 5> kSteps{0.02f, 0.08f, 0.2f, 0.45f, 0.9f};
+    constexpr std::array<float, 5> kSteps{0.08f, 0.25f, 0.5f, 0.8f, 1.2f}; // one voice ~0.9, both ~1.4
     for (size_t k = 0; k < meters_.size() && k < telemetry_.pairPeak.size(); ++k) {
         const float level = telemetry_.pairPeak[k];
         for (size_t j = 0; j < kSteps.size(); ++j) {
@@ -169,21 +310,29 @@ void LiliEditor::timerCallback() {
                                                       out);
         }
     }
-    bool changed = false;
+    // Repaint only what changed: a full-board repaint at 30 fps costs ~15% of a core.
     for (size_t i = 0; i < controls_.size(); ++i) {
         const float v = controls_[i].param->getValue();
         if (!juce::exactlyEqual(v, lastValues_[i])) {
             lastValues_[i] = v;
-            changed = true;
+            repaintBoardArea(
+                juce::Rectangle<float>(130.0f, 130.0f).withCentre(controls_[i].centre)); // sprite + shadow
         }
     }
-    bool alive = false;
-    for (const float gain : telemetry_.voiceGain) {
-        alive = alive || gain > 0.001f;
+    const auto glowArea = updateGlow(1.0f / 30.0f);
+    if (!glowArea.isEmpty()) {
+        repaintBoardArea(glowArea.toFloat() * 0.5f); // frame_ is 2x board px
     }
-    if (changed || alive) {
-        repaint();
+    bool metersLit = false;
+    for (const float peak : telemetry_.pairPeak) {
+        metersLit = metersLit || peak > 0.02f;
     }
+    if (metersLit || metersWereLit_) {
+        for (const auto& m : meters_) {
+            repaintBoardArea(juce::Rectangle<float>(76.0f, 20.0f).withCentre(m));
+        }
+    }
+    metersWereLit_ = metersLit;
 }
 
 LiliEditor::Control* LiliEditor::controlAt(juce::Point<float> boardPos) {

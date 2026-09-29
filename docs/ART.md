@@ -72,7 +72,21 @@ A 2240×1600 render takes about 12 s on an M4 Max (Metal).
 - **Pair LED meters:** follow the engine's telemetry.
 - Host automation moves everything. The window is resizable at a fixed aspect ratio.
 
-v1 assets are display-ready 8-bit PNGs from `export_ui.py` (tone mapping baked in), committed in `plugin/assets/`. The glow layers aren't used yet; they need the linear GPU pass.
+v1 assets are display-ready 8-bit PNGs from `export_ui.py` (tone mapping baked in), committed in `plugin/assets/`.
+
+**Software glow (v1).** Instead of a GPU pass, `export_ui.py` pre-computes each glow layer as a **display-space delta**, `AgX(base + layer) − AgX(base)`, how much it brightens the finished image at full level (`plugin/assets/glow/`, 17 layers, 0.34 MB). The editor keeps only the runs of pixels that actually light up; across all layers that's about 141k pixels. Each tick it undoes last frame's glow by copying just those runs back from the pristine board, adds `level × delta` for every lit layer, and repaints only the changed areas.
+- **What drives each layer:**
+  - voices: applied gain
+  - mix: summed pair peaks
+  - delays: delay peaks (dimmer when Delay Mix is 0)
+  - cross-mod arcs: FM depth, when a pair takes its partner as source
+  - total FB: only while the switch is on
+  - leaf LEDs: blink with the real LFO square, and glow steadily above 12 Hz
+  - stamens: output peak
+- **Release:** 150 ms.
+- **Approximation:** adding in display space isn't physically exact where lit layers overlap, but it's close at these levels; the GPU pass can later do it in linear light.
+- **Cost:** in the standalone app, about 12–16% "CPU" with five voices glowing vs about 6–12% idle. The idle figure is mostly the standalone's own audio-device threads waiting in the kernel (the profiler shows the engine and our copies as tiny), so the glow adds roughly 3–5% of a core.
+- **Debug:** `LILI_SNAPSHOT_SENSORS=136` latches sensors 1, 3, 6 and mutes the output, for glow snapshots.
 
 ```sh
 python3 tools/art/export_ui.py build/art/layers plugin/assets   # after a bake + strips
@@ -96,7 +110,7 @@ LILI_SNAPSHOT=/tmp/ed.png <Standalone app binary>                # editor saves 
 
 ## Open items
 
-- GPU pass (OpenGL) for the glow: sum linear glow layers weighted by telemetry, bloom, AgX. v1 draws the static board, sprites, pad warmth and meters in software.
+- Optional GPU pass (OpenGL): linear-light glow sum plus real bloom. The software glow covers the look for now.
 - Hover readouts (value + units) for knobs.
 
 ## Log
@@ -111,3 +125,4 @@ LILI_SNAPSHOT=/tmp/ed.png <Standalone app binary>                # editor saves 
 - **Tilt test:** 15° vs top-down compared (`build/art/tilt_compare.png`); stayed top-down.
 - **Layer bake:** light-group bake, linear encoding, reference compositor with fitted AgX look (`build/art/composite_play.png`).
 - **Native editor v1:** rendered board, knob and toggle sprites bound to parameters, mouse control, pad warmth, LED meters. pluginval passes at strictness 10 including its GUI tests; sprite seams fixed by feathering.
+- **Software glow:** display-space glow deltas driven by telemetry, run-length pixel updates, dirty-rect repaints; meter thresholds rescaled so "hot" means both voices loud (`build/art/editor_glow.png`).

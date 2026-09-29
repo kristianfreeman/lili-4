@@ -34,8 +34,28 @@ class LiliEditor final : public juce::AudioProcessorEditor, private juce::Timer 
         bool upIsHigh = false;     // Toggle2: is "lever up" the parameter's 1.0?
     };
 
+    // A pre-rendered glow delta (tools/art/export_ui.py), kept only as runs of
+    // pixels that actually light up, so per-frame cost follows what's glowing.
+    struct GlowSpan {
+        int y, x0, x1;
+        size_t offset; // into GlowLayer::bgr
+    };
+    struct GlowLayer {
+        juce::String name;
+        std::vector<GlowSpan> spans;
+        std::vector<uint8_t> bgr;    // delta pixels in the image's byte order
+        float shown = 0.0f;          // level after release smoothing
+        float drawn = 0.0f;          // level currently added into frame_
+        juce::Rectangle<int> bounds; // in frame_ pixels (board px * 2)
+    };
+
     void timerCallback() override;
     void loadLayout();
+    void loadGlow();
+    juce::Rectangle<int> updateGlow(float dt); // returns the changed area in frame_ pixels
+    void repaintBoardArea(juce::Rectangle<float> boardArea);
+    float glowTarget(const juce::String& name);
+    float paramValue(const juce::String& id);
     Control* controlAt(juce::Point<float> boardPos);
     juce::Point<float> toBoard(juce::Point<float> p) const { return p / scale_; }
     int frameFor(const Control& c) const;
@@ -45,12 +65,16 @@ class LiliEditor final : public juce::AudioProcessorEditor, private juce::Timer 
 
     LiliProcessor& processor_;
     juce::Image board_;
+    juce::Image pristine_; // board as ARGB, to undo last frame's glow
+    juce::Image frame_;    // board + glow: what paint() draws
+    std::vector<GlowLayer> glow_;
     juce::Image knobStrip_;
     juce::Image toggleStrip_;
     std::vector<Control> controls_;
     std::vector<juce::Point<float>> meters_; // centre of each pair's 5-LED meter, board px
     lili::Telemetry telemetry_;
     std::vector<float> lastValues_;
+    bool metersWereLit_ = false;
     float scale_ = 1.0f;
     int snapshotCountdown_ = 30; // timer ticks until the optional LILI_SNAPSHOT capture
 
