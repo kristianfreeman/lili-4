@@ -237,8 +237,8 @@ def toggle_switch(cx, cy, position, s=1.0):
     nut = bpy.context.active_object
     nut.location = (cx * PX, -cy * PX, 0.0011 * s)
     nut.data.materials.append(m["nickel"])
-    radial_prism("tog_bush", cx, cy, lambda th: (5.6 - 0.35 * abs(math.sin(10 * th))) * s, 0.0045 * s,
-                 0.0022 * s, m["nickel"], segments=160, top_bevel_px=0.6)
+    bush = radial_prism("tog_bush", cx, cy, lambda th: (5.6 - 0.35 * abs(math.sin(10 * th))) * s, 0.0045 * s,
+                        0.0022 * s, m["nickel"], segments=160, top_bevel_px=0.6)
     # A steep lean and a long bat so the throw reads from straight above.
     tilt = math.radians(34) * position
     length = 0.016 * s
@@ -256,6 +256,7 @@ def toggle_switch(cx, cy, position, s=1.0):
     tip.scale.z = 0.8
     tip.data.materials.append(m["chrome"])
     bpy.ops.object.shade_smooth()
+    return [nut, bush, bat, tip]
 
 
 def slide_switch(cx, cy, on):

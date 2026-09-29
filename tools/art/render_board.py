@@ -35,7 +35,8 @@ def parse_args():
             args["lit"] = True
         elif a == "--bake":
             args["bake"] = True
-        elif a == "--no-knobs":
+        elif a in ("--no-controls", "--no-knobs"):
+            # knob and toggle bodies come from sprite strips at runtime; labels/scales stay
             args["no_knobs"] = True
         elif a in ("--out", "--samples", "--scale", "--tilt"):
             args[a[2:]] = argv[i + 1]
@@ -477,7 +478,8 @@ def build(scene):
             text(title, x, y + 8, 9, silk_dim, "left")
             tx, ty = x + 16, y + 38
             throws = (1, 0, -1) if len(labels) == 3 else (1, -1)
-            parts.toggle_switch(tx, ty, throws[sel], s=1.35)
+            if not ARGS["no_knobs"]:
+                parts.toggle_switch(tx, ty, throws[sel], s=1.35)
             rows = (ty - 15, ty, ty + 15) if len(labels) == 3 else (ty - 12, ty + 12)
             for lab, ly_ in zip(labels, rows):
                 text(lab, tx + 20, ly_ + 3, 8, silk, "left")
@@ -485,7 +487,8 @@ def build(scene):
             text(title, x, y + 8, 9, silk_dim, "left")
             for j, (pid, lab, on) in enumerate(items):
                 tx, ty = x + 16 + 38 * j, y + 38
-                parts.toggle_switch(tx, ty, 1 if on else -1, s=1.35)
+                if not ARGS["no_knobs"]:
+                    parts.toggle_switch(tx, ty, 1 if on else -1, s=1.35)
                 text(lab, tx, ty + 32, 8, silk, "center")
 
     # Pair level meters (driven by telemetry pairPeak at runtime) -----------------

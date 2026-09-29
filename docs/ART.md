@@ -36,21 +36,27 @@ out    = sRGB( AgX(bloom(linear)) )                     # AgX minimal approx + l
 
 The first bake saved tone-mapped layers, and adding those washed the glow out to cream. Linear layers add physically. The AgX look parameters were fitted against Blender's "Medium High Contrast" render of the same scene (MSE 0.018 → 0.0008), so the composited plugin UI matches the style frames. It takes about 30 s for all 38 layers at 2240×1600.
 
-**Knobs: one shared filmstrip.** `render_knob_strip.py` renders the cream knob alone at 64 positions (value 0 = 7 o'clock to 1 = 5 o'clock) on a Cycles **shadow catcher** over a transparent film. Each frame is the knob plus its real soft shadow as alpha, under the board's own studio lights, so highlights stay put while the knob turns. It takes about 23 s. `assemble_strip.py` stacks the frames into `knob_strip.png` (128×8192, same linear 16-bit encoding, straight alpha) and registers it in the manifest. The board is then baked with `--no-knobs`: the base keeps each knob's silkscreen scale and label, and the runtime draws every knob from the strip:
+**Controls: shared sprite strips.** `render_sprites.py` renders one control alone, in each of its states, on a Cycles **shadow catcher** over a transparent film. Each frame is the part plus its real soft shadow as alpha, under the board's own studio lights, so highlights stay put while it moves.
+- **Knob:** 64 frames, value 0 = 7 o'clock to 1 = 5 o'clock. `knob_strip.png` is 128×8192 and takes about 23 s.
+- **Toggle:** 3 frames (lever up, centre, down). `toggle_strip.png`; each frame is 80 px, because the long lever shadow was clipped at 56 px.
+
+`assemble_strip.py` stacks the frames (same linear 16-bit encoding, straight alpha) and registers each strip in the manifest, including how states map to frames and where sprites anchor. The board is baked with `--no-controls`: the base keeps each control's silkscreen (scales, option legends, labels), and the runtime draws every knob and toggle from its strip:
 
 ```
-linear = base;  for each knob: linear = sprite·α + linear·(1−α)   # frame = round(value·63)
+linear = base;  for each control: linear = sprite·α + linear·(1−α)   # knob frame = round(value·63)
 linear += Σ level_i · glow_i;  out = sRGB(AgX(bloom(linear)))
 ```
 
-One strip serves all 31 knobs (the light direction barely changes across the board), about 4 MB as RGBA16F.
+One strip serves all instances (the light direction barely changes across the board): 31 knobs plus 16 toggles in about 4.5 MB as RGBA16F.
 
 ```sh
-blender -b -P tools/art/render_board.py -- --bake --no-knobs --out build/art/layers
-blender -b -P tools/art/render_knob_strip.py -- --out build/art/knob
+blender -b -P tools/art/render_board.py -- --bake --no-controls --out build/art/layers
+blender -b -P tools/art/render_sprites.py -- --part knob
+blender -b -P tools/art/render_sprites.py -- --part toggle
 python3 tools/art/crop_layers.py build/art/layers --threshold 0.02
-python3 tools/art/assemble_strip.py build/art/knob build/art/layers
-python3 tools/art/composite.py build/art/layers out.png voice0=1 knob:tune1=0.2
+python3 tools/art/assemble_strip.py build/art/knob build/art/layers --name knobStrip
+python3 tools/art/assemble_strip.py build/art/toggle build/art/layers --name toggleStrip
+python3 tools/art/composite.py build/art/layers out.png voice0=1 knob:tune1=0.2 toggle:source12=2
 ```
 
 **Cropping.** `crop_layers.py` trims each glow layer to where its decoded light exceeds 0.02 (plus 12 px padding) and records `rect` in the manifest. That's 13% of the full-frame area, so GPU memory for the layers (RGBA16F) drops from about 1,061 MB to 141 MB. It's visually lossless: against the uncropped composite the maximum error is 5/255 on 9 pixels. Some voice layers stay wide on purpose: lit traces reflect in glossy parts (U1 can, chrome toggles) across the board.
@@ -70,7 +76,6 @@ A 2240×1600 render takes about 12 s on an M4 Max (Metal).
 
 ## Open items
 
-- Toggle states (2 or 3 positions): same trick as the knobs, a small sprite per throw. Toggles are still baked at their style-frame positions.
 - The native JUCE compositor: GPU sum of layers, bloom, AgX, driven by telemetry.
 
 ## Log

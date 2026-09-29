@@ -63,29 +63,51 @@ def main():
     acc = load(os.path.join(layers_dir, manifest["base"]), gain)
     args = sys.argv[3:]
 
-    # Knob bodies from the filmstrip (a base baked with --no-knobs has only their scales).
-    strip_info = manifest.get("knobStrip")
-    if strip_info:
-        root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        board = json.load(open(os.path.join(root, "art", "board.json")))
-        overrides = {a[5:].split("=")[0]: float(a.split("=")[1]) for a in args if a.startswith("knob:")}
-        raw = np.asarray(Image.open(os.path.join(layers_dir, strip_info["file"]))).astype(np.float64)
-        raw = raw / (65535.0 if raw.max() > 255 else 255.0)
-        fw, fh = strip_info["frameSize"]
-        s = manifest["scale"]
+    # Control bodies from sprite strips (a base baked with --no-controls has only labels/scales).
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    board = json.load(open(os.path.join(root, "art", "board.json")))
+    s = manifest["scale"]
+
+    def overrides(prefix):
+        return {a[len(prefix):].split("=")[0]: float(a.split("=")[1]) for a in args if a.startswith(prefix)}
+
+    def strip(key):
+        info = manifest.get(key)
+        if not info:
+            return None, None
+        raw = np.asarray(Image.open(os.path.join(layers_dir, info["file"]))).astype(np.float64)
+        return info, raw / (65535.0 if raw.max() > 255 else 255.0)
+
+    def draw(info, raw, frame_index, cx, cy):
+        fw, fh = info["frameSize"]
+        frame = raw[frame_index * fh:(frame_index + 1) * fh]
+        rgb = srgb_to_linear(frame[..., :3]) * gain
+        a = frame[..., 3:4]
+        x0, y0 = int(cx * s - fw / 2), int(cy * s - fh / 2)
+        region = acc[y0:y0 + fh, x0:x0 + fw]
+        acc[y0:y0 + fh, x0:x0 + fw] = rgb * a + region * (1 - a)
+
+    info, raw = strip("knobStrip")
+    if info:
+        knob_values = overrides("knob:")
         for pid, x, y, _label, value in board["knobs"]:
-            value = overrides.get(pid, value)
-            f = round(value * (strip_info["frames"] - 1))
-            frame = raw[f * fh:(f + 1) * fh]
-            rgb = srgb_to_linear(frame[..., :3]) * gain
-            a = frame[..., 3:4]
-            x0, y0 = int((x + 26) * s - fw / 2), int((y + 17) * s - fh / 2)
-            region = acc[y0:y0 + fh, x0:x0 + fw]
-            acc[y0:y0 + fh, x0:x0 + fw] = rgb * a + region * (1 - a)
+            value = knob_values.get(pid, value)
+            draw(info, raw, round(value * (info["frames"] - 1)), x + 26, y + 17)
+
+    info, raw = strip("toggleStrip")
+    if info:
+        states = overrides("toggle:")
+        for pid, x, y, _title, labels, sel in board["jumpers"]:
+            sel = int(states.get(pid, sel))
+            draw(info, raw, sel if len(labels) == 3 else (0 if sel == 0 else 2), x + 16, y + 38)
+        for x, y, _title, items in board["dips"]:
+            for i, (pid, _label, on) in enumerate(items):
+                on = states.get(pid, on)
+                draw(info, raw, 0 if on else 2, x + 16 + 38 * i, y + 38)
 
     rects = {layer["name"]: layer.get("rect") for layer in manifest["layers"]}
     for arg in args:
-        if arg.startswith("knob:"):
+        if arg.startswith(("knob:", "toggle:")):
             continue
         name, level = arg.split("=")
         img = float(level) * load(os.path.join(layers_dir, name + ".png"), gain)
