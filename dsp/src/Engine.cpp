@@ -213,6 +213,7 @@ void Engine::setParams(const Params& p) {
 }
 
 void Engine::process(float* left, float* right, int numSamples) {
+    auto& tm = telemetry_;
     for (int n = 0; n < numSamples; ++n) {
         const float y = processSample();
         left[n] = y;
@@ -220,9 +221,25 @@ void Engine::process(float* left, float* right, int numSamples) {
             right[n] = y;
         }
     }
+
+    tm.lfoPhaseA = lfoPhaseA_;
+    tm.lfoPhaseB = lfoPhaseB_;
+    tm.lfoHzA = lfoFreqA_.value();
+    tm.lfoHzB = lfoFreqB_.value();
+    tm.delayMs = {delay_[0].timeMs.value(), delay_[1].timeMs.value()};
+}
+
+void Engine::clearTelemetryPeaks() {
+    auto& tm = telemetry_;
+    tm.pairPeak.fill(0.0f);
+    tm.fmPeak.fill(0.0f);
+    tm.delayPeak.fill(0.0f);
+    tm.drivePeak = tm.outPeak = tm.totalFbPeak = 0.0f;
 }
 
 float Engine::processSample() {
+    auto& tm = telemetry_;
+
     // --- Hyper LFO ---------------------------------------------------------
     const float fA = lfoFreqA_.next();
     const float fB = lfoFreqB_.next();
@@ -261,7 +278,9 @@ float Engine::processSample() {
         const float cross = tapsIn[static_cast<size_t>(kPartnerSwitchOff[i])] * leak(!crossSwitch_) +
                             tapsIn[static_cast<size_t>(kPartnerSwitchOn[i])] * leak(crossSwitch_);
         const float source = cross * leak(pr.source == 0) + lfoSource * leak(pr.source == 2);
-        const float fmAmount = 1.0f + source * pr.mod.next();
+        const float fmIndex = source * pr.mod.next();
+        const float fmAmount = 1.0f + fmIndex;
+        tm.fmPeak[i] = std::max(tm.fmPeak[i], std::fabs(fmIndex));
         pairSharp[i] = pr.sharp.next();
 
         const float vib = vibrato_ ? std::cos(kTwoPi * pr.vibPhase) : 0.0f;
@@ -285,12 +304,14 @@ float Engine::processSample() {
         const float l = voices_[v].sensor.next();
         const float thump = (l > 0.0f && l < 1.0f) ? 0.5f * std::sin(kTwoPi * l) : 0.0f;
         const float gain = std::min(l * l + hold[v / 4], 1.0f);
+        tm.voiceGain[v] = gain;
         pairOut[v / 2] += (shaped + thump) * gain;
     }
 
     float voiceSum = 0.0f;
     for (size_t i = 0; i < kNumPairs; ++i) {
         pairs_[i].tap.write(pairs_[i].tapFilter.process(pairOut[i]));
+        tm.pairPeak[i] = std::max(tm.pairPeak[i], std::fabs(pairOut[i]));
         voiceSum += pairOut[i];
     }
     const float in = voiceSum * kVoiceMix;
@@ -301,7 +322,8 @@ float Engine::processSample() {
     const float lfoMod = delaySource_ == 2 ? (delayWaveform_ == 0 ? delTri : delSqr) : 0.0f;
     const float msToSamples = 0.001f * sampleRate_;
     float wetSum = 0.0f;
-    for (auto& d : delay_) {
+    for (size_t k = 0; k < delay_.size(); ++k) {
+        auto& d = delay_[k];
         const float self = d.selfLp.process(0.5f * d.lastWrite);
         const float mod = lfoMod + (delaySource_ == 0 ? self : 0.0f);
         const float ms = d.timeMs.next() + d.depthMs.next() * mod;
@@ -313,6 +335,7 @@ float Engine::processSample() {
         }
         d.line.push(write);
         d.lastWrite = write;
+        tm.delayPeak[k] = std::max(tm.delayPeak[k], std::fabs(loop));
         wetSum += loop;
     }
     const float wet = tanhP(wetSum / std::max(fb, 1.5f));
@@ -325,9 +348,14 @@ float Engine::processSample() {
     const float shapedDist = shapeHp_.process(t + 0.25f * pow31(t)) / clampf(dG, 1.0f, 4.0f);
     const float dm = distMix_.next();
     const float mixed = delayed * (1.0f - dm) + (shapedDist + 0.1f * delayed) * dm;
-    totalFeedback_.write(totalFbHp_.process(tanhP(mixed)));
+    const float totalFb = totalFbHp_.process(tanhP(mixed));
+    totalFeedback_.write(totalFb);
 
-    return mixed * volume_.next();
+    const float out = mixed * volume_.next();
+    tm.drivePeak = std::max(tm.drivePeak, std::fabs(shapedDist * dm));
+    tm.totalFbPeak = std::max(tm.totalFbPeak, std::fabs(totalFb));
+    tm.outPeak = std::max(tm.outPeak, std::fabs(out));
+    return out;
 }
 
 void setParam(Params& p, std::size_t index, float value) {

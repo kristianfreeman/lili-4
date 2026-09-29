@@ -207,6 +207,27 @@ void testStressExtremes() {
     }
 }
 
+void testTelemetry() {
+    lili::Engine e;
+    e.prepare(kSr);
+    lili::Params p;
+    p.source[0] = 2; // pair 12 FM'd by the LFO
+    p.mod[0] = 1.0f;
+    e.setParams(p);
+    e.setGate(0, true);
+    render(e, 24000);
+    e.clearTelemetryPeaks();
+    render(e, 512);
+    const auto& t = e.telemetry();
+    check(t.voiceGain[0] > 0.99f, "telemetry: gated voice at full gain");
+    check(t.voiceGain[4] == 0.0f, "telemetry: idle voice at zero gain");
+    check(t.pairPeak[0] > 0.01f && t.pairPeak[2] < 1e-6f, "telemetry: pair peaks follow the gate");
+    check(t.fmPeak[0] > 0.5f, "telemetry: FM depth reported for LFO-modulated pair");
+    check(t.outPeak > 0.01f, "telemetry: output peak");
+    check(std::fabs(t.lfoHzA - lili::mtof(127.f * (64 / 127.f) * (64 / 127.f) - 75.f)) < 0.01f,
+          "telemetry: LFO A rate");
+}
+
 void testParamTableRoundTrip() {
     lili::Params p;
     for (size_t i = 0; i < lili::kNumParams; ++i) {
@@ -232,6 +253,7 @@ int main() {
         {"delay interpolation", testDelayLineInterpolation},
         {"deterministic with seed", testDeterministicWithSeed},
         {"stress extremes", testStressExtremes},
+        {"telemetry", testTelemetry},
         {"param table round trip", testParamTableRoundTrip},
     };
     for (const auto& [name, fn] : tests) {

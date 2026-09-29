@@ -102,8 +102,47 @@ void LiliProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuf
     if (pos < numSamples) {
         engine_.process(left + pos, right != nullptr ? right + pos : nullptr, numSamples - pos);
     }
+    publishTelemetry();
 }
 
+void LiliProcessor::publishTelemetry() {
+    const juce::SpinLock::ScopedTryLockType lock(telemetryLock_);
+    if (!lock.isLocked()) {
+        return; // the editor is reading; keep accumulating and try next block
+    }
+    const auto& src = engine_.telemetry();
+    auto& dst = telemetry_;
+    const auto maxInto = [](auto& into, const auto& from) {
+        for (size_t i = 0; i < into.size(); ++i) {
+            into[i] = std::max(into[i], from[i]);
+        }
+    };
+    maxInto(dst.pairPeak, src.pairPeak);
+    maxInto(dst.fmPeak, src.fmPeak);
+    maxInto(dst.delayPeak, src.delayPeak);
+    dst.drivePeak = std::max(dst.drivePeak, src.drivePeak);
+    dst.outPeak = std::max(dst.outPeak, src.outPeak);
+    dst.totalFbPeak = std::max(dst.totalFbPeak, src.totalFbPeak);
+    dst.voiceGain = src.voiceGain;
+    dst.lfoPhaseA = src.lfoPhaseA;
+    dst.lfoPhaseB = src.lfoPhaseB;
+    dst.lfoHzA = src.lfoHzA;
+    dst.lfoHzB = src.lfoHzB;
+    dst.delayMs = src.delayMs;
+    engine_.clearTelemetryPeaks();
+}
+
+lili::Telemetry LiliProcessor::takeTelemetry() {
+    const juce::SpinLock::ScopedLockType lock(telemetryLock_);
+    auto out = telemetry_;
+    telemetry_.pairPeak.fill(0.0f);
+    telemetry_.fmPeak.fill(0.0f);
+    telemetry_.delayPeak.fill(0.0f);
+    telemetry_.drivePeak = telemetry_.outPeak = telemetry_.totalFbPeak = 0.0f;
+    return out;
+}
+
+// Generic parameter UI until the rendered circuit-board editor lands.
 juce::AudioProcessorEditor* LiliProcessor::createEditor() {
     return new juce::GenericAudioProcessorEditor(*this);
 }

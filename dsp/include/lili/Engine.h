@@ -21,6 +21,24 @@ struct EngineConfig {
     bool delaySafetySaturator = true;
 };
 
+// What the UI animates from. Peaks accumulate until clearTelemetryPeaks();
+// the rest are the values at the end of the last process() call. Written
+// only by the audio thread.
+struct Telemetry {
+    std::array<float, kNumVoices> voiceGain{}; // amplitude gain applied to each voice (0..1)
+    std::array<float, kNumPairs> pairPeak{};   // peak |pair output|
+    std::array<float, kNumPairs> fmPeak{};     // peak |FM index| (source * mod depth)
+    float lfoPhaseA = 0.0f;
+    float lfoPhaseB = 0.0f;
+    float lfoHzA = 0.0f;
+    float lfoHzB = 0.0f;
+    std::array<float, 2> delayPeak{}; // peak |delay loop signal|
+    std::array<float, 2> delayMs{};   // current delay times
+    float drivePeak = 0.0f;           // peak |distortion wet| * mix
+    float outPeak = 0.0f;
+    float totalFbPeak = 0.0f;
+};
+
 class Engine {
   public:
     static constexpr float kMaxDelayMs = 5944.0f;
@@ -39,6 +57,11 @@ class Engine {
 
     // Pitch of a voice before smoothing, vibrato and FM (for tests/UI).
     static float voiceFrequency(const Params& params, int voice);
+
+    // Audio-thread only; copy it out under the host's own synchronisation.
+    // Peaks accumulate across process() calls until clearTelemetryPeaks().
+    const Telemetry& telemetry() const { return telemetry_; }
+    void clearTelemetryPeaks();
 
   private:
     // A fixed delay of 1 or 64 samples for the internal FM feedback paths.
@@ -129,6 +152,8 @@ class Engine {
     Smoother drive_, distMix_, volume_;
     HighPass1 driveHp_, shapeHp_, totalFbHp_;
     FeedbackPath totalFeedback_;
+
+    Telemetry telemetry_;
 };
 
 } // namespace lili

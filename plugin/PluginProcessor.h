@@ -37,10 +37,14 @@ class LiliProcessor final : public juce::AudioProcessor {
 
     juce::AudioProcessorValueTreeState& state() { return state_; }
 
+    // Message thread: the telemetry gathered since the previous call.
+    lili::Telemetry takeTelemetry();
+
   private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     void handleMidi(const juce::MidiMessage& msg);
     void updateGates();
+    void publishTelemetry();
 
     juce::AudioProcessorValueTreeState state_;
     std::array<std::atomic<float>*, lili::kNumParams> raw_{};
@@ -49,6 +53,10 @@ class LiliProcessor final : public juce::AudioProcessor {
     lili::Params params_;
     std::array<bool, lili::kNumVoices> midiHeld_{};
     uint32_t seed_ = 1;
+
+    // Handoff to the editor. The audio thread only ever try-locks.
+    juce::SpinLock telemetryLock_;
+    lili::Telemetry telemetry_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LiliProcessor)
 };
