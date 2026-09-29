@@ -268,8 +268,9 @@ def font(path):
     return FONTS[path]
 
 
-MONO = "/System/Library/Fonts/Menlo.ttc"
-SERIF = "/System/Library/Fonts/Supplemental/Georgia.ttf"
+# Vendored OFL fonts (licences alongside), safe to bake into shipped art.
+MONO = os.path.join(ROOT, "art", "fonts", "IBMPlexMono-Medium.ttf")
+SERIF = os.path.join(ROOT, "art", "fonts", "InstrumentSerif-Regular.ttf")
 
 
 def text(body, x, y, size_px, mat, align="left", font_path=MONO, z=0.00045, spacing=1.12):
