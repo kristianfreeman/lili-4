@@ -16,6 +16,7 @@ driven by engine telemetry. There is no web view or JavaScript in the plugin.
 blender -b -P tools/art/render_board.py -- --out build/art/board.png [--lit] [--samples 128] [--scale 2]
 blender -b -P tools/art/render_parts.py -- --out build/art/parts.png [--tilt 28] [--scale 4]
 blender -b -P tools/art/render_board.py -- --bake --out build/art/layers    # runtime layers
+python3 tools/art/crop_layers.py build/art/layers --threshold 0.02          # crop to where light lands
 python3 tools/art/composite.py build/art/layers out.png voice0=1 mix=0.8 delay0=0.5   # preview a state
 ```
 
@@ -35,6 +36,8 @@ out    = sRGB( AgX(bloom(linear)) )                     # AgX minimal approx + l
 
 The first bake saved tone-mapped layers, and adding those washed the glow out to cream. Linear layers add physically. The AgX look parameters were fitted against Blender's "Medium High Contrast" render of the same scene (MSE 0.018 → 0.0008), so the composited plugin UI matches the style frames. It takes about 30 s for all 38 layers at 2240×1600.
 
+**Cropping.** `crop_layers.py` trims each glow layer to where its decoded light exceeds 0.02 (plus 12 px padding) and records `rect` in the manifest. That's 13% of the full-frame area, so GPU memory for the layers (RGBA16F) drops from about 1,061 MB to 141 MB. It's visually lossless: against the uncropped composite the maximum error is 5/255 on 9 pixels. Some voice layers stay wide on purpose: lit traces reflect in glossy parts (U1 can, chrome toggles) across the board.
+
 A 2240×1600 render takes about 12 s on an M4 Max (Metal).
 
 ## Decisions
@@ -51,7 +54,6 @@ A 2240×1600 render takes about 12 s on an M4 Max (Metal).
 ## Open items
 
 - Knob and toggle states: rotor frame strips, or rendering knobs as separate rotatable sprites. Controls are currently baked at their style-frame positions.
-- Crop each glow layer to its bounding box (full-frame layers take about 56 MB; most of it is black).
 - The native JUCE compositor: GPU sum of layers, bloom, AgX, driven by telemetry.
 
 ## Log

@@ -61,9 +61,12 @@ def main():
     manifest = json.load(open(os.path.join(layers_dir, "manifest.json")))
     gain = 2.0 ** -manifest["encoding"]["exposureEV"]
     acc = load(os.path.join(layers_dir, manifest["base"]), gain)
+    rects = {layer["name"]: layer.get("rect") for layer in manifest["layers"]}
     for arg in sys.argv[3:]:
         name, level = arg.split("=")
-        acc += float(level) * load(os.path.join(layers_dir, name + ".png"), gain)
+        img = float(level) * load(os.path.join(layers_dir, name + ".png"), gain)
+        x, y, w, h = rects.get(name) or (0, 0, img.shape[1], img.shape[0])
+        acc[y:y + h, x:x + w] += img  # cropped layers sit at their rect (crop_layers.py)
     rgb = linear_to_srgb(agx(acc))
     Image.fromarray((rgb * 255 + 0.5).astype(np.uint8)).save(out)
     print("wrote", out)
