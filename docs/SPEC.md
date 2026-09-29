@@ -89,11 +89,13 @@ Per-voice table `[lo, hi]` in MIDI note numbers (index = voice − 1):
 | hi    | 93  | 93  | 109 | 107 | 116.54 | 116.54 | 126.24 | 131.22 |
 
 ```
-pitchMul_G = 0.01 + 1.99 · x_pitch-G                 (group multiplier, 0.01..2.0)
+pitchMul_G = 2^(round(12 · log2(0.01 + 1.99 · x_pitch-G)) / 12)   (group multiplier, semitone steps)
 f_N        = mtof(lo_N + x_tune-N · (hi_N − lo_N)) · pitchMul_G
 if quantize: f_N = mtof(round(ftom(f_N)))
 f_N        = smooth(f_N)
 ```
+
+**LILI-8:** the reference's group Pitch is a continuous 0.01–2.0 multiplier. LILI-8 snaps it to whole semitones (−80 to +12 st). The default x = 64/127 is exactly 0 st, and group transpositions stay in tune with each other. The per-voice Tune knobs stay continuous. The 5 ms frequency smoother turns each step into a short glide.
 
 ## Pair vibrato
 

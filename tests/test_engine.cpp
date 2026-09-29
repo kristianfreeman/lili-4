@@ -96,7 +96,13 @@ void testHoldDrones() {
 void testVoiceFrequencyTable() {
     lili::Params p;
     p.pitch = {64 / 127.f, 64 / 127.f};
-    const float mul = 0.01f + 1.99f * 64 / 127.f;
+    const float mul = lili::Engine::pitchMultiplier(64 / 127.f);
+    check(std::fabs(mul - 1.0f) < 1e-6f, "default group pitch is exactly unity");
+    check(lili::Engine::pitchSemitones(1.0f) == 12, "pitch knob top = +12 st");
+    for (int i = 0; i <= 100; ++i) {
+        const float semis = 12.0f * std::log2(lili::Engine::pitchMultiplier(static_cast<float>(i) / 100.0f));
+        check(std::fabs(semis - std::round(semis)) < 1e-3f, "group pitch lands on whole semitones");
+    }
     p.tune[0] = 0.0f;
     check(std::fabs(lili::Engine::voiceFrequency(p, 0) - lili::mtof(-16.f) * mul) < 1e-3f, "voice 1 low end");
     p.tune[7] = 1.0f;

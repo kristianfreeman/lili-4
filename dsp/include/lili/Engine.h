@@ -58,6 +58,11 @@ class Engine {
     // Pitch of a voice before smoothing, vibrato and FM (for tests/UI).
     static float voiceFrequency(const Params& params, int voice);
 
+    // Group Pitch knob: the reference's 0.01..2.0 multiplier, snapped to whole
+    // semitones (x = 64/127 is exactly 0 st). Range -80..+12 st.
+    static int pitchSemitones(float x);
+    static float pitchMultiplier(float x);
+
     // Audio-thread only; copy it out under the host's own synchronisation.
     // Peaks accumulate across process() calls until clearTelemetryPeaks().
     const Telemetry& telemetry() const { return telemetry_; }

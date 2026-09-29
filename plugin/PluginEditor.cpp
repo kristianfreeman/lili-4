@@ -44,6 +44,13 @@ LiliEditor::LiliEditor(LiliProcessor& owner) : AudioProcessorEditor(owner), proc
             vol->setValueNotifyingHost(0.0f);
         }
     }
+    // LILI_SNAPSHOT_PARAMS="hold1234=1,volume=0" sets normalised parameter values.
+    for (const auto& kv : juce::StringArray::fromTokens(
+             juce::SystemStats::getEnvironmentVariable("LILI_SNAPSHOT_PARAMS", {}), ",", {})) {
+        if (auto* p = processor_.state().getParameter(kv.upToFirstOccurrenceOf("=", false, false).trim())) {
+            p->setValueNotifyingHost(kv.fromFirstOccurrenceOf("=", false, false).getFloatValue());
+        }
+    }
     const auto readoutId = juce::SystemStats::getEnvironmentVariable("LILI_SNAPSHOT_READOUT", {});
     for (auto& c : controls_) {
         if (readoutId.isNotEmpty() && c.param->getParameterID() == readoutId) {
@@ -170,7 +177,9 @@ float LiliEditor::glowTarget(const juce::String& name) {
     const auto& t = telemetry_;
     const auto clamp01 = [](float v) { return juce::jlimit(0.0f, 1.0f, v); };
     if (name.startsWith("voice")) {
-        return t.voiceGain[static_cast<size_t>(name.getTrailingIntValue())];
+        // Perceptual: a Hold drone at gain 0.36 (-9 dB) is clearly audible and should
+        // read as lit, not 36% glow. sqrt keeps full notes full and lifts quiet drones.
+        return std::sqrt(t.voiceGain[static_cast<size_t>(name.getTrailingIntValue())]);
     }
     if (name == "mix") {
         return clamp01((t.pairPeak[0] + t.pairPeak[1] + t.pairPeak[2] + t.pairPeak[3]) * 0.8f);
@@ -347,7 +356,8 @@ juce::String LiliEditor::readoutText(const Control& c) const {
             value = hz < 1000.0f ? juce::String(hz, hz < 100.0f ? 1 : 0) + " Hz"
                                  : juce::String(hz / 1000.0f, 2) + " kHz";
         } else if (id.startsWith("pitch")) {
-            value = juce::String::fromUTF8("\xc3\x97") + juce::String(0.01f + 1.99f * v, 2);
+            const int st = lili::Engine::pitchSemitones(v); // quantised to semitones
+            value = (st > 0 ? "+" : "") + juce::String(st) + " st";
         } else if (id.startsWith("lfoFreq")) {
             const float hz = lili::mtof(127.0f * v * v - 75.0f);
             value = juce::String(hz, hz < 1.0f ? 2 : 1) + " Hz";

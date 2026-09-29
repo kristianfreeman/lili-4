@@ -45,10 +45,16 @@ float pow31(float t) {
 
 } // namespace
 
+int Engine::pitchSemitones(float x) {
+    return static_cast<int>(std::lround(12.0f * std::log2(0.01f + 1.99f * x)));
+}
+
+float Engine::pitchMultiplier(float x) { return std::exp2(static_cast<float>(pitchSemitones(x)) / 12.0f); }
+
 float Engine::voiceFrequency(const Params& p, int voice) {
     const auto v = static_cast<size_t>(voice);
     const float note = kTuneLo[v] + p.tune[v] * (kTuneHi[v] - kTuneLo[v]);
-    float hz = mtof(note) * (0.01f + 1.99f * p.pitch[static_cast<size_t>(groupOf(voice))]);
+    float hz = mtof(note) * pitchMultiplier(p.pitch[static_cast<size_t>(groupOf(voice))]);
     if (p.quantize) {
         hz = mtof(std::floor(ftom(hz) + 0.5f));
     }
