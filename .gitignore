@@ -2,3 +2,5 @@ build/
 .cache/
 *.wav
 .DS_Store
+.claude/
+.deps/

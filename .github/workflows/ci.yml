@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JUCE_VERSION: "9.0.3"
+
+jobs:
+  lint:
+    name: Lint (clang-format, clang-tidy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install LLVM tools (pinned)
+        run: pip install clang-format==19.1.7 clang-tidy==19.1.0
+      - name: Configure (engine only, for compile_commands.json)
+        run: cmake -S . -B build/lint -DLILI_BUILD_PLUGIN=OFF -DCMAKE_BUILD_TYPE=Debug
+      - name: Lint
+        run: tools/lint.sh build/lint
+
+  test:
+    name: Engine tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        shell: bash
+        run: |
+          cmake -S . -B build -DLILI_BUILD_PLUGIN=OFF -DCMAKE_BUILD_TYPE=Release \
+            -DLILI_WARNINGS_AS_ERRORS=${{ runner.os == 'macOS' && 'ON' || 'OFF' }}
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Benchmark (informational)
+        if: runner.os != 'Windows'
+        run: ./build/tests/lili_bench
+
+  plugin-macos:
+    name: Plugin (macOS universal AU/VST3)
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache JUCE
+        id: juce-cache
+        uses: actions/cache@v4
+        with:
+          path: .deps/JUCE
+          key: juce-${{ env.JUCE_VERSION }}
+      - name: Fetch JUCE
+        if: steps.juce-cache.outputs.cache-hit != 'true'
+        run: git clone --depth 1 --branch "$JUCE_VERSION" https://github.com/juce-framework/JUCE.git .deps/JUCE
+      - name: Configure
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLILI_JUCE_DIR=.deps/JUCE \
+            "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: Check architectures
+        run: |
+          for bin in build/plugin/LILI8_artefacts/Release/AU/LILI-8.component/Contents/MacOS/LILI-8 \
+                     build/plugin/LILI8_artefacts/Release/VST3/LILI-8.vst3/Contents/MacOS/LILI-8; do
+            archs=$(lipo -archs "$bin"); echo "$bin: $archs"
+            [[ "$archs" == *arm64* && "$archs" == *x86_64* ]]
+          done
+      - name: auval
+        run: |
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          cp -R build/plugin/LILI8_artefacts/Release/AU/LILI-8.component ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar || true
+          auval -v aumu Lil8 Kfrm
+      - name: pluginval
+        run: |
+          curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+          unzip -q pluginval.zip
+          pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process --skip-gui-tests \
+            --timeout-ms 600000 build/plugin/LILI8_artefacts/Release/VST3/LILI-8.vst3
+      - name: Package
+        run: |
+          mkdir -p dist
+          cd build/plugin/LILI8_artefacts/Release
+          ditto -c -k --keepParent AU/LILI-8.component "$GITHUB_WORKSPACE/dist/LILI-8.component.zip"
+          ditto -c -k --keepParent VST3/LILI-8.vst3 "$GITHUB_WORKSPACE/dist/LILI-8.vst3.zip"
+          ditto -c -k --keepParent Standalone/LILI-8.app "$GITHUB_WORKSPACE/dist/LILI-8.app.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LILI-8-macOS-universal
+          path: dist/*.zip

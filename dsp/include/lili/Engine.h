@@ -1,0 +1,134 @@
+// LILI-8 engine: 8 voices in 4 FM pairs, hyper LFO, dual mod delay, drive.
+// Framework-free; the plugin and the tests drive it directly.
+#pragma once
+
+#include "lili/Params.h"
+#include "lili/Primitives.h"
+
+#include <array>
+#include <cstdint>
+
+namespace lili {
+
+struct EngineConfig {
+    // Seeds the per-pair vibrato rates and the delay noise. The reference
+    // seeds from wall-clock time; pass a random value for that behaviour.
+    uint32_t seed = 1;
+    // Delay the pair/total-feedback FM paths by one 64-sample Pd block
+    // instead of one sample (for A/B against reference renders).
+    bool legacyBlockFeedback = false;
+    // Soft-limit the delay write signal so high feedback cannot run away.
+    bool delaySafetySaturator = true;
+};
+
+class Engine {
+  public:
+    static constexpr float kMaxDelayMs = 5944.0f;
+
+    void prepare(double sampleRate, const EngineConfig& config = {});
+    void reset();
+
+    // Control rate. Cheap enough to call once per audio block.
+    void setParams(const Params& params);
+    // Sensor gate for voice 0..7.
+    void setGate(int voice, bool on);
+    bool gate(int voice) const { return voices_[static_cast<size_t>(voice)].gate; }
+
+    // Mono engine; `right` may be null or equal to `left`.
+    void process(float* left, float* right, int numSamples);
+
+    // Pitch of a voice before smoothing, vibrato and FM (for tests/UI).
+    static float voiceFrequency(const Params& params, int voice);
+
+  private:
+    // A fixed delay of 1 or 64 samples for the internal FM feedback paths.
+    class FeedbackPath {
+      public:
+        void setDelay(int samples) { delay_ = samples; }
+        float read() const { return buf_[static_cast<size_t>((write_ + kSize - delay_) & (kSize - 1))]; }
+        void write(float x) {
+            buf_[static_cast<size_t>(write_)] = x;
+            write_ = (write_ + 1) & (kSize - 1);
+        }
+        void reset() {
+            buf_.fill(0.0f);
+            write_ = 0;
+        }
+
+      private:
+        static constexpr int kSize = 64;
+        std::array<float, kSize> buf_{};
+        int write_ = 0;
+        int delay_ = 1;
+    };
+
+    struct Voice {
+        LinearRamp sensor;
+        bool gate = false;
+    };
+
+    struct Pair {
+        Smoother sharp;
+        Smoother mod;
+        HighPass1 tapFilter;
+        FeedbackPath tap;
+        float vibPhase = 0.0f;
+        float vibInc = 0.0f;
+        bool fast = true;
+        int source = 1;
+    };
+
+    struct DelayChannel {
+        DelayLine line;
+        Smoother timeMs;
+        Smoother depthMs;
+        HighPass1 hp;
+        LowPass1 lp;
+        LowPass1 selfLp;
+        RefCompressor comp;
+        RefExpander expander;
+        float lastWrite = 0.0f;
+    };
+
+    void retriggerSensor(Voice& v, const Pair& pair);
+    float processSample();
+
+    float sampleRate_ = 44100.0f;
+    float invSampleRate_ = 1.0f / 44100.0f;
+    EngineConfig config_;
+    bool snapOnNextParams_ = true;
+
+    std::array<Voice, kNumVoices> voices_{};
+    OscBank<kNumVoices> osc_;
+    // Per-voice pitch smoothing, kept as flat arrays so it vectorises.
+    alignas(16) std::array<float, kNumVoices> freq_{};
+    alignas(16) std::array<float, kNumVoices> freqTarget_{};
+    float freqCoef_ = 1.0f;
+    std::array<Pair, kNumPairs> pairs_{};
+    std::array<Smoother, kNumGroups> hold_{};
+
+    bool crossSwitch_ = false;
+    bool totalFb_ = false;
+    bool vibrato_ = false;
+
+    // Hyper LFO
+    Smoother lfoFreqA_, lfoFreqB_;
+    float lfoPhaseA_ = 0.0f;
+    float lfoPhaseB_ = 0.0f;
+    bool lfoOr_ = false;
+    bool lfoLink_ = false;
+
+    // Delay
+    std::array<DelayChannel, 2> delay_{};
+    Smoother delayFeedback_, delayMix_;
+    int delaySource_ = 2;
+    int delayWaveform_ = 0;
+    Noise noise_;
+
+    // Master
+    Smoother drive_, distMix_, volume_;
+    HighPass1 driveHp_, shapeHp_, totalFbHp_;
+    FeedbackPath totalFeedback_;
+};
+
+} // namespace lili

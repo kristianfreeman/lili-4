@@ -1,0 +1,28 @@
+---
+# Scope: our code only (dsp/, plugin/, tests/). JUCE headers are excluded by
+# HeaderFilterRegex.
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-exception-escape,
+  -bugprone-narrowing-conversions,
+  clang-analyzer-*,
+  cppcoreguidelines-init-variables,
+  cppcoreguidelines-pro-type-member-init,
+  misc-const-correctness,
+  misc-redundant-expression,
+  misc-unused-parameters,
+  modernize-use-override,
+  modernize-use-nullptr,
+  modernize-use-emplace,
+  performance-*,
+  -performance-enum-size,
+  readability-const-return-type,
+  readability-inconsistent-declaration-parameter-name,
+  readability-redundant-*,
+  readability-simplify-boolean-expr
+WarningsAsErrors: '*'
+HeaderFilterRegex: '/(dsp/include/lili|plugin|tests)/[^/]+\.h$'
+ExcludeHeaderFilterRegex: '_deps/'
+FormatStyle: file
