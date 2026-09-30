@@ -48,6 +48,9 @@ def main():
     base_lin = load(os.path.join(layers_dir, manifest["base"]), gain)
     glow_dir = os.path.join(out_dir, "glow")
     os.makedirs(glow_dir, exist_ok=True)
+    for stale in os.listdir(glow_dir):  # layer names change with the layout; never keep old ones
+        if stale.endswith(".png") or stale.endswith(".json"):
+            os.remove(os.path.join(glow_dir, stale))
     rects = {}
     for layer in manifest["layers"]:
         if layer["kind"] == "meter":

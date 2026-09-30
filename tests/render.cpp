@@ -1,10 +1,10 @@
 // lili_render: offline render to a 32-bit float WAV, for listening and for
 // comparing against renders of the reference Pd patch.
 //
-//   lili_render out.wav [seconds] [param=value ...] [gates=13578]
+//   lili_render out.wav [seconds] [param=value ...] [gates=134]
 //
-// `param` is any ParamInfo id (e.g. delMix=0.6 source12=0); `gates` lists the
-// voices (1-8) held for the whole render.
+// `param` is any ParamInfo id (e.g. delMix=0.6 source1=0); `gates` lists the
+// petals (1-4) held for the whole render.
 #include "lili/Engine.h"
 
 #include <cstdint>
@@ -49,7 +49,7 @@ bool writeWav(const char* path, const std::vector<float>& mono, int sampleRate) 
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::fprintf(stderr, "usage: %s out.wav [seconds] [param=value ...] [gates=1234]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s out.wav [seconds] [param=value ...] [gates=13]\n", argv[0]);
         return 2;
     }
     constexpr int kSampleRate = 48000;
@@ -87,7 +87,7 @@ int main(int argc, char** argv) {
     engine.prepare(kSampleRate);
     engine.setParams(params);
     for (const char c : gates) {
-        if (c >= '1' && c <= '8') {
+        if (c >= '1' && c <= '4') { // petals 1-4
             engine.setGate(c - '1', true);
         }
     }

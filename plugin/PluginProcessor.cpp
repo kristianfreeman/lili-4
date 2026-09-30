@@ -98,9 +98,10 @@ void LiliProcessor::prepareToPlay(double sampleRate, int /*samplesPerBlock*/) {
 
 void LiliProcessor::handleMidi(const juce::MidiMessage& msg) {
     if (msg.isNoteOnOrOff()) {
-        const int voice = msg.getNoteNumber() - lili::kFirstSensorNote;
-        if (voice >= 0 && voice < lili::kNumVoices) {
-            midiHeld_[static_cast<size_t>(voice)] = msg.isNoteOn();
+        // C1, D1, E1, F1 play petals 1-4.
+        const auto it = std::find(lili::kSensorNotes.begin(), lili::kSensorNotes.end(), msg.getNoteNumber());
+        if (it != lili::kSensorNotes.end()) {
+            midiHeld_[static_cast<size_t>(it - lili::kSensorNotes.begin())] = msg.isNoteOn();
         }
     } else if (msg.isAllNotesOff() || msg.isAllSoundOff()) {
         midiHeld_.fill(false);
@@ -108,9 +109,9 @@ void LiliProcessor::handleMidi(const juce::MidiMessage& msg) {
 }
 
 void LiliProcessor::updateGates() {
-    for (int v = 0; v < lili::kNumVoices; ++v) {
-        const auto i = static_cast<size_t>(v);
-        engine_.setGate(v, midiHeld_[i] || params_.latch[i]);
+    for (int petal = 0; petal < lili::kNumPetals; ++petal) {
+        const auto i = static_cast<size_t>(petal);
+        engine_.setGate(petal, midiHeld_[i] || params_.latch[i]);
     }
 }
 
@@ -186,8 +187,8 @@ juce::AudioProcessorEditor* LiliProcessor::createEditor() { return new LiliEdito
 void LiliProcessor::getStateInformation(juce::MemoryBlock& destData) {
     auto tree = state_.copyState();
     tree.setProperty("seed", static_cast<juce::int64>(seed_), nullptr);
-    tree.setProperty("seedFile1234", seedFiles_[0].getFullPathName(), nullptr);
-    tree.setProperty("seedFile5678", seedFiles_[1].getFullPathName(), nullptr);
+    tree.setProperty("seedFile12", seedFiles_[0].getFullPathName(), nullptr);
+    tree.setProperty("seedFile34", seedFiles_[1].getFullPathName(), nullptr);
     if (const auto xml = tree.createXml()) {
         copyXmlToBinary(*xml, destData);
     }
@@ -203,8 +204,7 @@ void LiliProcessor::setStateInformation(const void* data, int sizeInBytes) {
             }
             // Seed samples are referenced by path; a missing file just leaves that group silent.
             for (int g = 0; g < lili::kNumGroups; ++g) {
-                const juce::String path =
-                    tree.getProperty(g == 0 ? "seedFile1234" : "seedFile5678").toString();
+                const juce::String path = tree.getProperty(g == 0 ? "seedFile12" : "seedFile34").toString();
                 if (juce::File::isAbsolutePath(path) && juce::File(path).existsAsFile()) {
                     loadSeed(g, juce::File(path));
                 }

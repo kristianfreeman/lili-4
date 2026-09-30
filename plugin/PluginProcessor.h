@@ -60,7 +60,7 @@ class LiliProcessor final : public juce::AudioProcessor {
 
     lili::Engine engine_;
     lili::Params params_;
-    std::array<bool, lili::kNumVoices> midiHeld_{};
+    std::array<bool, lili::kNumPetals> midiHeld_{};
     uint32_t seed_ = 1;
 
     // Handoff to the editor. The audio thread only ever try-locks.

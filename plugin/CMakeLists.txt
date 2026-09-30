@@ -13,12 +13,12 @@ endif()
 
 option(LILI_COPY_PLUGIN "Install the built AU/VST3 into ~/Library/Audio/Plug-Ins" OFF)
 
-juce_add_plugin(LILI8
-    PRODUCT_NAME "LILI-8"
+juce_add_plugin(LILI4
+    PRODUCT_NAME "LILI-4"
     COMPANY_NAME "Kristian Freeman"
-    BUNDLE_ID com.kristianfreeman.lili8
+    BUNDLE_ID com.kristianfreeman.lili4
     PLUGIN_MANUFACTURER_CODE Kfrm
-    PLUGIN_CODE Lil8
+    PLUGIN_CODE Lil4
     FORMATS AU VST3 Standalone
     IS_SYNTH TRUE
     NEEDS_MIDI_INPUT TRUE
@@ -29,7 +29,7 @@ juce_add_plugin(LILI8
     VST3_CATEGORIES Instrument Synth
     COPY_PLUGIN_AFTER_BUILD ${LILI_COPY_PLUGIN})
 
-target_sources(LILI8 PRIVATE PluginProcessor.cpp PluginEditor.cpp)
+target_sources(LILI4 PRIVATE PluginProcessor.cpp PluginEditor.cpp)
 
 # Pre-rendered UI art (tools/art/export_ui.py) and the shared board layout.
 file(GLOB lili_glow_assets CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/glow/*.png)
@@ -45,12 +45,12 @@ juce_add_binary_data(LiliAssets
         ${PROJECT_SOURCE_DIR}/art/board.json
         ${PROJECT_SOURCE_DIR}/art/fonts/IBMPlexMono-Medium.ttf)
 
-target_compile_definitions(LILI8 PUBLIC
+target_compile_definitions(LILI4 PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0)
 
-target_link_libraries(LILI8
+target_link_libraries(LILI4
     PRIVATE
         lili::dsp
         LiliAssets

@@ -288,7 +288,24 @@ close to ±1, where it sharpens the clipped edges.
   `w = x + c·w₋₁`, `y = (1 + c)/2 · (w − w₋₁)`.
 - `LP1(x, fc)`: Pd's `lop~`, where `k = clamp(2π·fc/SR, 0, 1)`, `y += k·(x − y)`.
 
-## Garden engine (LILI-8's own; not in the reference)
+## LILI-4 structure (supersedes the 8-voice layout above)
+
+LILI-4 keeps the reference's 8 oscillators in 4 FM pairs, but presents each pair as one **petal** (`docs/PLAN-lili4.md`):
+
+- **One pad, gate, sensor envelope and thump per petal**, shared by both oscillators. The thump is carried by oscillator A only.
+- **Tuning:**
+  ```
+  f_A = mtof(24 + 72 · x_tune) · pitchMul_G        (C1..C7)
+  f_B = f_A · 2^(spread / 12),  spread = 12 · u³,  u = 2 · x_spread − 1
+  ```
+  Spread is fine detune near the centre, ±1 octave at the ends; the default x = 0.56 is about +2 cents. Quantize applies to both.
+- **Partners:** 1 ↔ 2 and 3 ↔ 4 with Switch off; 1 ↔ 4, 2 ↔ 1, 3 ↔ 2, 4 ↔ 3 with Switch on (the reference's pair matrix).
+- **MIDI:** notes 36, 38, 40, 41 (C1 D1 E1 F1) gate petals 1–4.
+- **Groups** (1·2, 3·4) keep Pitch, Hold, Engine and Table.
+
+Everything else in this document applies per petal where it said per pair.
+
+## Garden engine (not in the reference)
 
 Everything here is opt-in. With Engine = Classic, Bloom = 0 and BEE off, the
 engine is bit-identical to the reference port above (tested). See

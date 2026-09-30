@@ -74,31 +74,31 @@ jobs:
         run: cmake --build build --config Release --parallel
       - name: Check architectures
         run: |
-          for bin in build/plugin/LILI8_artefacts/Release/AU/LILI-8.component/Contents/MacOS/LILI-8 \
-                     build/plugin/LILI8_artefacts/Release/VST3/LILI-8.vst3/Contents/MacOS/LILI-8; do
+          for bin in build/plugin/LILI4_artefacts/Release/AU/LILI-4.component/Contents/MacOS/LILI-4 \
+                     build/plugin/LILI4_artefacts/Release/VST3/LILI-4.vst3/Contents/MacOS/LILI-4; do
             archs=$(lipo -archs "$bin"); echo "$bin: $archs"
             [[ "$archs" == *arm64* && "$archs" == *x86_64* ]]
           done
       - name: auval
         run: |
           mkdir -p ~/Library/Audio/Plug-Ins/Components
-          cp -R build/plugin/LILI8_artefacts/Release/AU/LILI-8.component ~/Library/Audio/Plug-Ins/Components/
+          cp -R build/plugin/LILI4_artefacts/Release/AU/LILI-4.component ~/Library/Audio/Plug-Ins/Components/
           killall -9 AudioComponentRegistrar || true
-          auval -v aumu Lil8 Kfrm
+          auval -v aumu Lil4 Kfrm
       - name: pluginval
         run: |
           curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
           unzip -q pluginval.zip
           pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process \
-            --timeout-ms 600000 build/plugin/LILI8_artefacts/Release/VST3/LILI-8.vst3
+            --timeout-ms 600000 build/plugin/LILI4_artefacts/Release/VST3/LILI-4.vst3
       - name: Package
         run: |
           mkdir -p dist
-          cd build/plugin/LILI8_artefacts/Release
-          ditto -c -k --keepParent AU/LILI-8.component "$GITHUB_WORKSPACE/dist/LILI-8.component.zip"
-          ditto -c -k --keepParent VST3/LILI-8.vst3 "$GITHUB_WORKSPACE/dist/LILI-8.vst3.zip"
-          ditto -c -k --keepParent Standalone/LILI-8.app "$GITHUB_WORKSPACE/dist/LILI-8.app.zip"
+          cd build/plugin/LILI4_artefacts/Release
+          ditto -c -k --keepParent AU/LILI-4.component "$GITHUB_WORKSPACE/dist/LILI-4.component.zip"
+          ditto -c -k --keepParent VST3/LILI-4.vst3 "$GITHUB_WORKSPACE/dist/LILI-4.vst3.zip"
+          ditto -c -k --keepParent Standalone/LILI-4.app "$GITHUB_WORKSPACE/dist/LILI-4.app.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: LILI-8-macOS-universal
+          name: LILI-4-macOS-universal
           path: dist/*.zip

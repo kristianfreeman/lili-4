@@ -44,12 +44,12 @@ LiliEditor::LiliEditor(LiliProcessor& owner) : AudioProcessorEditor(owner), proc
             vol->setValueNotifyingHost(0.0f);
         }
     }
-    // LILI_SNAPSHOT_SEED=/path.wav loads a Seed sample into group 5678.
+    // LILI_SNAPSHOT_SEED=/path.wav loads a Seed sample into group 3·4.
     const auto seedPath = juce::SystemStats::getEnvironmentVariable("LILI_SNAPSHOT_SEED", {});
     if (juce::File::isAbsolutePath(seedPath)) {
         processor_.loadSeed(1, juce::File(seedPath));
     }
-    // LILI_SNAPSHOT_PARAMS="hold1234=1,volume=0" sets normalised parameter values.
+    // LILI_SNAPSHOT_PARAMS="hold12=1,volume=0" sets normalised parameter values.
     for (const auto& kv : juce::StringArray::fromTokens(
              juce::SystemStats::getEnvironmentVariable("LILI_SNAPSHOT_PARAMS", {}), ",", {})) {
         if (auto* p = processor_.state().getParameter(kv.upToFirstOccurrenceOf("=", false, false).trim())) {
@@ -181,10 +181,12 @@ float LiliEditor::paramValue(const juce::String& id) {
 float LiliEditor::glowTarget(const juce::String& name) {
     const auto& t = telemetry_;
     const auto clamp01 = [](float v) { return juce::jlimit(0.0f, 1.0f, v); };
-    if (name.startsWith("voice")) {
+    if (name.startsWith("petal")) {
+        // The louder of the petal's two oscillators (Bloom breathes them separately).
         // Perceptual: a Hold drone at gain 0.36 (-9 dB) is clearly audible and should
         // read as lit, not 36% glow. sqrt keeps full notes full and lifts quiet drones.
-        return std::sqrt(t.voiceGain[static_cast<size_t>(name.getTrailingIntValue())]);
+        const auto p = static_cast<size_t>(name.getTrailingIntValue());
+        return std::sqrt(std::max(t.voiceGain[2 * p], t.voiceGain[2 * p + 1]));
     }
     if (name == "mix") {
         return clamp01((t.pairPeak[0] + t.pairPeak[1] + t.pairPeak[2] + t.pairPeak[3]) * 0.8f);
@@ -196,7 +198,7 @@ float LiliEditor::glowTarget(const juce::String& name) {
     if (name.startsWith("xmod")) {
         // Lit when a pair on that side takes its partner as FM source (Source option 0).
         const size_t a = name.endsWith("0") ? 0 : 2;
-        static const char* const ids[] = {"source12", "source34", "source56", "source78"};
+        static const char* const ids[] = {"source1", "source2", "source3", "source4"};
         float level = 0.0f;
         for (size_t p = a; p < a + 2; ++p) {
             if (juce::roundToInt(paramValue(ids[p]) * 2.0f) == 0) {
@@ -300,7 +302,7 @@ void LiliEditor::paint(juce::Graphics& g) {
     g.drawImage(frame_, getLocalBounds().toFloat()); // board + audio-driven glow (updateGlow)
 
     // Pair level meters: 4 amber + 1 pink "hot" LED.
-    constexpr std::array<float, 5> kSteps{0.08f, 0.25f, 0.5f, 0.8f, 1.2f}; // one voice ~0.9, both ~1.4
+    constexpr std::array<float, 5> kSteps{0.08f, 0.25f, 0.5f, 0.8f, 1.2f}; // one oscillator ~0.9, both ~1.4
     for (size_t k = 0; k < meters_.size() && k < telemetry_.pairPeak.size(); ++k) {
         const float level = telemetry_.pairPeak[k];
         for (size_t j = 0; j < kSteps.size(); ++j) {
@@ -335,7 +337,7 @@ void LiliEditor::paint(juce::Graphics& g) {
         g.setColour(kAmber);
         g.drawRoundedRectangle(area, 12.0f * scale_, 2.0f * scale_);
         g.setFont(mono_.withHeight(14.0f * scale_));
-        g.drawText(dropGroup_ == 0 ? "SEED 1234" : "SEED 5678", area.withTrimmedTop(area.getHeight() * 0.45f),
+        g.drawText(dropGroup_ == 0 ? "SEED 1·2" : "SEED 3·4", area.withTrimmedTop(area.getHeight() * 0.45f),
                    juce::Justification::centredTop, false);
     }
 
@@ -370,9 +372,15 @@ juce::String LiliEditor::readoutText(const Control& c) const {
                     lili::setParam(p, i, raw->load());
                 }
             }
-            const float hz = lili::Engine::voiceFrequency(p, id.getTrailingIntValue() - 1);
+            const float hz =
+                lili::Engine::voiceFrequency(p, 2 * (id.getTrailingIntValue() - 1)); // oscillator A
             value = hz < 1000.0f ? juce::String(hz, hz < 100.0f ? 1 : 0) + " Hz"
                                  : juce::String(hz / 1000.0f, 2) + " kHz";
+        } else if (id.startsWith("spread")) {
+            const float st = lili::Engine::spreadSemitones(v);
+            const juce::String sign = st >= 0.0f ? "+" : "";
+            value = std::fabs(st) < 1.0f ? sign + juce::String(juce::roundToInt(st * 100.0f)) + " c"
+                                         : sign + juce::String(st, 1) + " st";
         } else if (id.startsWith("pitch")) {
             const int st = lili::Engine::pitchSemitones(v); // quantised to semitones
             value = (st > 0 ? "+" : "") + juce::String(st) + " st";
@@ -412,7 +420,7 @@ juce::String LiliEditor::readoutText(const Control& c) const {
         const int index = c.kind == Kind::Toggle3 ? juce::roundToInt(v * 2.0f) : juce::roundToInt(v);
         value = c.options[juce::jlimit(0, c.options.size() - 1, index)];
         if (id.startsWith("engine") && index == lili::PetalSeed) {
-            const auto name = processor_.seedName(id == "engine1234" ? 0 : 1);
+            const auto name = processor_.seedName(id == "engine12" ? 0 : 1);
             value += ": " + (name.isNotEmpty() ? name : juce::String("drop an audio file"));
         }
     } else if (c.kind == Kind::Pad) {
@@ -535,7 +543,7 @@ void LiliEditor::filesDropped(const juce::StringArray& files, int x, int /*y*/) 
     for (const auto& f : files) {
         if (processor_.loadSeed(group, juce::File(f))) {
             // Switch that group to the Seed engine so the drop is heard straight away.
-            if (auto* engine = processor_.state().getParameter(group == 0 ? "engine1234" : "engine5678")) {
+            if (auto* engine = processor_.state().getParameter(group == 0 ? "engine12" : "engine34")) {
                 engine->beginChangeGesture();
                 engine->setValueNotifyingHost(engine->convertTo0to1(static_cast<float>(lili::PetalSeed)));
                 engine->endChangeGesture();

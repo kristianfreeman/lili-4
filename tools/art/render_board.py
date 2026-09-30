@@ -386,10 +386,10 @@ def build(scene):
     # Copper under the mask ------------------------------------------------------
     for idx, d in enumerate(LAYOUT["petals"]):
         lg(poly_curve(f"petal{idx}", sample_path(d), 2.4,
-                      trace_lit if idx in lit_spec.get("petals", []) else trace), f"voice{idx}")
+                      trace_lit if idx in lit_spec.get("petals", []) else trace), f"petal{idx}")
     for idx, d in enumerate(LAYOUT["ribs"]):
         lg(poly_curve(f"rib{idx}", sample_path(d), 1.5,
-                      trace_lit if idx in lit_spec.get("petals", []) else trace), f"voice{idx}")
+                      trace_lit if idx in lit_spec.get("petals", []) else trace), f"petal{idx}")
     for d in LAYOUT["traces"]:
         poly_curve("trace", sample_path(d), 2.2, trace)
     lg(poly_curve("stem", sample_path(LAYOUT["stem"]), 3.2, trace_lit if lit_spec.get("stem") else trace), "mix")
@@ -412,7 +412,7 @@ def build(scene):
     for i, (x, y) in enumerate(LAYOUT["pads"]):
         if style.get("pad") == "comb":
             # interdigitated touch sensor (see parts.touch_pad)
-            lg(parts.touch_pad(x, y, LAYOUT["padRadius"], lit=i in lit_spec.get("petals", [])), f"voice{i}")
+            lg(parts.touch_pad(x, y, LAYOUT["padRadius"], lit=i in lit_spec.get("petals", [])), f"petal{i}")
         else:
             # HASL pads: a slightly domed solder coat, rounded at the edge
             cylinder(f"pad{i}", x, y, LAYOUT["padRadius"], 0.0009, tin, verts=96, bevel_px=3)
@@ -673,7 +673,7 @@ def probe(x, y, radius=30):
 
 
 def layer_kind(name):
-    for prefix in ("voice", "delay", "xmod", "lfo", "meter"):
+    for prefix in ("petal", "delay", "xmod", "lfo", "meter"):
         if name.startswith(prefix):
             return prefix, name[len(prefix):]
     return name, None

@@ -1,4 +1,4 @@
-# LILI-8 art direction and pipeline
+# LILI-4 art direction and pipeline
 
 The UI is pre-rendered artwork (Blender), composited natively at runtime and
 driven by engine telemetry. There is no web view or JavaScript in the plugin.
@@ -136,3 +136,4 @@ LILI_SNAPSHOT=/tmp/ed.png <Standalone app binary>                # editor saves 
 - **Native editor v1:** rendered board, knob and toggle sprites bound to parameters, mouse control, pad warmth, LED meters. pluginval passes at strictness 10 including its GUI tests; sprite seams fixed by feathering.
 - **Software glow:** display-space glow deltas driven by telemetry, run-length pixel updates, dirty-rect repaints; meter thresholds rescaled so "hot" means both voices loud (`build/art/editor_glow.png`).
 - **Garden controls:** each group module gains an ENGINE 3-way toggle (CLASSIC/WAVE/SEED) and a TABLE knob in its empty right half; BLOOM, DRIFT and the BEE toggle sit above the flower, between S2 and S5. Drag-and-drop outlines the target half in amber. No editor code changed for layout: it all comes from `board.json`. Debug: `LILI_SNAPSHOT_SEED=<wav>` loads a sample into group 5678 (`build/art/editor_garden.png`).
+- **LILI-4:** four petals fanning up from U1 on a long stem (lily in side view, unlike the Lyra's row of plates); petal modules TUNE/SPREAD/TIMBRE/MOD; Lyra vocabulary renamed (Hyper LFO → LFO A/B, dual mod delay → ECHO, Sharp → TIMBRE); logo LILI-4, "A GARDEN DRONE · REV B". Glow layers are `petal0..3`; `export_ui.py` now clears stale glow files (`build/art/editor_lili4.png`).

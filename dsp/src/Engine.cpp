@@ -7,9 +7,9 @@ namespace lili {
 
 namespace {
 
-// Per-voice tuning range in MIDI notes (the reference's [text define $0-tune]).
-constexpr std::array<float, kNumVoices> kTuneLo{-16.f, -16.f, 7.f, 9.f, 20.f, 20.f, 33.f, 33.f};
-constexpr std::array<float, kNumVoices> kTuneHi{93.f, 93.f, 109.f, 107.f, 116.54f, 116.54f, 126.24f, 131.22f};
+// Petal tuning range in MIDI notes: C1..C7.
+constexpr float kTuneLowNote = 24.0f;
+constexpr float kTuneSpan = 72.0f;
 
 // Cross-mod partners per pair for Switch = 0 / Switch = 1 (see SPEC "Source matrix").
 constexpr std::array<int, kNumPairs> kPartnerSwitchOff{1, 0, 3, 2};
@@ -53,9 +53,17 @@ int Engine::pitchSemitones(float x) {
 
 float Engine::pitchMultiplier(float x) { return std::exp2(static_cast<float>(pitchSemitones(x)) / 12.0f); }
 
+float Engine::spreadSemitones(float x) {
+    const float u = 2.0f * x - 1.0f;
+    return 12.0f * u * u * u; // fine detune near the centre, +-1 octave at the ends
+}
+
 float Engine::voiceFrequency(const Params& p, int voice) {
-    const auto v = static_cast<size_t>(voice);
-    const float note = kTuneLo[v] + p.tune[v] * (kTuneHi[v] - kTuneLo[v]);
+    const auto petal = static_cast<size_t>(voice / 2);
+    float note = kTuneLowNote + p.tune[petal] * kTuneSpan;
+    if (voice % 2 == 1) {
+        note += spreadSemitones(p.spread[petal]); // oscillator B
+    }
     float hz = mtof(note) * pitchMultiplier(p.pitch[static_cast<size_t>(groupOf(voice))]);
     if (p.quantize) {
         hz = mtof(std::floor(ftom(hz) + 0.5f));
@@ -68,8 +76,8 @@ void Engine::prepare(double sampleRate, const EngineConfig& config) {
     invSampleRate_ = 1.0f / sampleRate_;
     config_ = config;
 
-    for (auto& v : voices_) {
-        v.sensor.prepare(sampleRate_);
+    for (auto& pr : pairs_) {
+        pr.sensor.prepare(sampleRate_);
     }
     osc_.prepare(sampleRate_);
     bank_ = &WavetableBank::instance(); // built here, never on the audio thread
@@ -132,9 +140,9 @@ void Engine::prepare(double sampleRate, const EngineConfig& config) {
 }
 
 void Engine::reset() {
-    for (auto& v : voices_) {
-        v.sensor.reset(0.0f);
-        v.gate = false;
+    for (auto& pr : pairs_) {
+        pr.sensor.reset(0.0f);
+        pr.gate = false;
     }
     osc_.reset(kPulseWidth);
     wavePhase_.fill(0.0f);
@@ -171,10 +179,10 @@ void Engine::reset() {
     snapOnNextParams_ = true;
 }
 
-void Engine::retriggerSensor(Voice& v, const Pair& pair) {
+void Engine::retriggerSensor(Pair& pair) {
     const float attackMs = pair.fast ? 100.0f : 200.0f;
     const float releaseMs = pair.fast ? 100.0f : 8000.0f;
-    v.sensor.rampTo(v.gate ? 1.0f : 0.0f, v.gate ? attackMs : releaseMs);
+    pair.sensor.rampTo(pair.gate ? 1.0f : 0.0f, pair.gate ? attackMs : releaseMs);
 }
 
 // Bloom: each voice follows two slow smoothstepped random walks. At bloom 0
@@ -242,16 +250,16 @@ float Engine::seedPetal(SeedVoice& sv, const SeedSample& s, float hz, float timb
     return kSeedGain * out;
 }
 
-void Engine::setGate(int voice, bool on) {
-    if (voice < 0 || voice >= kNumVoices) {
+void Engine::setGate(int petal, bool on) {
+    if (petal < 0 || petal >= kNumPetals) {
         return;
     }
-    auto& v = voices_[static_cast<size_t>(voice)];
-    if (v.gate == on) {
+    auto& pr = pairs_[static_cast<size_t>(petal)];
+    if (pr.gate == on) {
         return;
     }
-    v.gate = on;
-    retriggerSensor(v, pairs_[static_cast<size_t>(voice / 2)]);
+    pr.gate = on;
+    retriggerSensor(pr);
 }
 
 void Engine::setParams(const Params& p) {
@@ -278,9 +286,8 @@ void Engine::setParams(const Params& p) {
         pr.source = p.source[i];
         if (pr.fast != p.fast[i]) {
             pr.fast = p.fast[i];
-            // The reference re-sends the gate so running ramps pick up the new time.
-            retriggerSensor(voices_[2 * i], pr);
-            retriggerSensor(voices_[2 * i + 1], pr);
+            // Re-send the gate so a running ramp picks up the new time.
+            retriggerSensor(pr);
         }
     }
     for (size_t g = 0; g < kNumGroups; ++g) {
@@ -438,6 +445,14 @@ float Engine::processSample() {
     alignas(16) std::array<float, kNumVoices> triangle{};
     osc_.process(hz.data(), pw.data(), square.data(), triangle.data());
 
+    std::array<float, kNumPetals> petalLevel{};
+    std::array<float, kNumPetals> petalThump{};
+    for (size_t i = 0; i < kNumPetals; ++i) {
+        const float l = pairs_[i].sensor.next();
+        petalLevel[i] = l;
+        petalThump[i] = (l > 0.0f && l < 1.0f) ? 0.5f * std::sin(kTwoPi * l) : 0.0f;
+    }
+
     std::array<float, kNumPairs> pairOut{};
     for (size_t v = 0; v < kNumVoices; ++v) {
         const float sharp = clampf(pairSharp[v / 2] + bloomTimbre_[v], 0.0f, 1.0f);
@@ -456,8 +471,9 @@ float Engine::processSample() {
         } else {
             shaped = square[v] * sharp - triangle[v] * (1.0f - sharp);
         }
-        const float l = voices_[v].sensor.next();
-        const float thump = (l > 0.0f && l < 1.0f) ? 0.5f * std::sin(kTwoPi * l) : 0.0f;
+        // One sensor per petal: both oscillators share it, and only oscillator A carries the thump.
+        const float l = petalLevel[v / 2];
+        const float thump = v % 2 == 0 ? petalThump[v / 2] : 0.0f;
         const float gain = std::min(l * l + hold[v / 4] + bloomBreath_[v], 1.0f);
         tm.voiceGain[v] = gain;
         pairOut[v / 2] += (shaped + thump) * gain;
@@ -518,34 +534,38 @@ void setParam(Params& p, std::size_t index, float value) {
     const int choice = static_cast<int>(std::lround(value));
     const auto at = [](size_t base, size_t idx) { return idx - base; };
     switch (index) {
-    case P_FAST_12:
-    case P_FAST_34:
-    case P_FAST_56:
-    case P_FAST_78: p.fast[at(P_FAST_12, index)] = on; break;
     case P_TUNE_1:
     case P_TUNE_2:
     case P_TUNE_3:
-    case P_TUNE_4:
-    case P_TUNE_5:
-    case P_TUNE_6:
-    case P_TUNE_7:
-    case P_TUNE_8: p.tune[at(P_TUNE_1, index)] = value; break;
-    case P_SHARP_12:
-    case P_SHARP_34:
-    case P_SHARP_56:
-    case P_SHARP_78: p.sharp[at(P_SHARP_12, index)] = value; break;
-    case P_MOD_12:
-    case P_MOD_34:
-    case P_MOD_56:
-    case P_MOD_78: p.mod[at(P_MOD_12, index)] = value; break;
-    case P_SOURCE_12:
-    case P_SOURCE_34:
-    case P_SOURCE_56:
-    case P_SOURCE_78: p.source[at(P_SOURCE_12, index)] = choice; break;
-    case P_PITCH_1234:
-    case P_PITCH_5678: p.pitch[at(P_PITCH_1234, index)] = value; break;
-    case P_HOLD_1234:
-    case P_HOLD_5678: p.hold[at(P_HOLD_1234, index)] = value; break;
+    case P_TUNE_4: p.tune[at(P_TUNE_1, index)] = value; break;
+    case P_SPREAD_1:
+    case P_SPREAD_2:
+    case P_SPREAD_3:
+    case P_SPREAD_4: p.spread[at(P_SPREAD_1, index)] = value; break;
+    case P_TIMBRE_1:
+    case P_TIMBRE_2:
+    case P_TIMBRE_3:
+    case P_TIMBRE_4: p.sharp[at(P_TIMBRE_1, index)] = value; break;
+    case P_MOD_1:
+    case P_MOD_2:
+    case P_MOD_3:
+    case P_MOD_4: p.mod[at(P_MOD_1, index)] = value; break;
+    case P_SOURCE_1:
+    case P_SOURCE_2:
+    case P_SOURCE_3:
+    case P_SOURCE_4: p.source[at(P_SOURCE_1, index)] = choice; break;
+    case P_FAST_1:
+    case P_FAST_2:
+    case P_FAST_3:
+    case P_FAST_4: p.fast[at(P_FAST_1, index)] = on; break;
+    case P_PITCH_12:
+    case P_PITCH_34: p.pitch[at(P_PITCH_12, index)] = value; break;
+    case P_HOLD_12:
+    case P_HOLD_34: p.hold[at(P_HOLD_12, index)] = value; break;
+    case P_ENGINE_12:
+    case P_ENGINE_34: p.engine[at(P_ENGINE_12, index)] = choice; break;
+    case P_TABLE_12:
+    case P_TABLE_34: p.table[at(P_TABLE_12, index)] = value; break;
     case P_SWITCH: p.crossSwitch = on; break;
     case P_TOTAL_FB: p.totalFb = on; break;
     case P_VIBRATO: p.vibrato = on; break;
@@ -565,21 +585,13 @@ void setParam(Params& p, std::size_t index, float value) {
     case P_DIST_MIX: p.distMix = value; break;
     case P_VOLUME: p.volume = value; break;
     case P_QUANTIZE: p.quantize = on; break;
-    case P_SENSOR_1:
-    case P_SENSOR_2:
-    case P_SENSOR_3:
-    case P_SENSOR_4:
-    case P_SENSOR_5:
-    case P_SENSOR_6:
-    case P_SENSOR_7:
-    case P_SENSOR_8: p.latch[at(P_SENSOR_1, index)] = on; break;
-    case P_ENGINE_1234:
-    case P_ENGINE_5678: p.engine[at(P_ENGINE_1234, index)] = choice; break;
-    case P_TABLE_1234:
-    case P_TABLE_5678: p.table[at(P_TABLE_1234, index)] = value; break;
     case P_BLOOM: p.bloom = value; break;
     case P_DRIFT: p.drift = value; break;
     case P_BEE: p.bee = on; break;
+    case P_SENSOR_1:
+    case P_SENSOR_2:
+    case P_SENSOR_3:
+    case P_SENSOR_4: p.latch[at(P_SENSOR_1, index)] = on; break;
     default: break;
     }
 }

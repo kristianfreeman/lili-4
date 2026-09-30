@@ -104,14 +104,26 @@ void testVoiceFrequencyTable() {
         const float semis = 12.0f * std::log2(lili::Engine::pitchMultiplier(static_cast<float>(i) / 100.0f));
         check(std::fabs(semis - std::round(semis)) < 1e-3f, "group pitch lands on whole semitones");
     }
+    // Petal tune spans C1..C7; oscillator A (even voices) is the petal's pitch.
     p.tune[0] = 0.0f;
-    check(std::fabs(lili::Engine::voiceFrequency(p, 0) - lili::mtof(-16.f) * mul) < 1e-3f, "voice 1 low end");
-    p.tune[7] = 1.0f;
-    check(std::fabs(lili::Engine::voiceFrequency(p, 7) / (lili::mtof(131.22f) * mul) - 1.0f) < 1e-4f,
-          "voice 8 high end");
+    check(std::fabs(lili::Engine::voiceFrequency(p, 0) / lili::mtof(24.f) - 1.0f) < 1e-5f,
+          "petal 1 low end is C1");
+    p.tune[3] = 1.0f;
+    check(std::fabs(lili::Engine::voiceFrequency(p, 6) / lili::mtof(96.f) - 1.0f) < 1e-5f,
+          "petal 4 high end is C7");
+    // Spread: oscillator B sits 12 u^3 semitones from A.
+    check(std::fabs(lili::Engine::spreadSemitones(0.5f)) < 1e-6f, "spread centre is unison");
+    check(std::fabs(lili::Engine::spreadSemitones(1.0f) - 12.0f) < 1e-5f, "spread top is +1 octave");
+    check(std::fabs(lili::Engine::spreadSemitones(0.0f) + 12.0f) < 1e-5f, "spread bottom is -1 octave");
+    p.spread[1] = 1.0f;
+    const float ratio = lili::Engine::voiceFrequency(p, 3) / lili::Engine::voiceFrequency(p, 2);
+    check(std::fabs(ratio - 2.0f) < 1e-4f, "petal 2 oscillator B an octave above A at full spread");
+    const float cents = 1200.0f * lili::Engine::spreadSemitones(lili::Params{}.spread[0]) / 12.0f;
+    check(cents > 0.5f && cents < 5.0f,
+          "default spread is a gentle detune (" + std::to_string(cents) + " c)");
     p.quantize = true;
     p.tune[2] = 0.5f;
-    const float q = lili::ftom(lili::Engine::voiceFrequency(p, 2));
+    const float q = lili::ftom(lili::Engine::voiceFrequency(p, 4));
     check(std::fabs(q - std::round(q)) < 1e-3f, "quantize snaps to semitones");
 }
 
@@ -170,7 +182,7 @@ void testDeterministicWithSeed() {
         p.vibrato = true;
         p.delayMix = 0.5f;
         e.setParams(p);
-        for (int v = 0; v < 8; ++v) {
+        for (int v = 0; v < lili::kNumPetals; ++v) {
             e.setGate(v, true);
         }
         render(e, 9600, out);
@@ -204,7 +216,7 @@ void testStressExtremes() {
         p.drive = 1.0f;
         p.distMix = 1.0f;
         e.setParams(p);
-        for (int v = 0; v < 8; ++v) {
+        for (int v = 0; v < lili::kNumPetals; ++v) {
             e.setGate(v, true);
         }
         const auto s = render(e, static_cast<int>(kSr * 10));
@@ -307,7 +319,7 @@ void testWaveEngine() {
     p.mod = {0.8f, 0.0f, 0.5f, 0.0f};
     p.source = {0, 1, 2, 1};
     e.setParams(p);
-    for (int v = 0; v < 8; ++v) {
+    for (int v = 0; v < lili::kNumPetals; ++v) {
         e.setGate(v, true);
     }
     const auto s = render(e, 48000);
@@ -330,7 +342,7 @@ void testSeedSilentWithoutSample() {
     lili::Params p;
     p.engine = {lili::PetalSeed, lili::PetalSeed};
     e.setParams(p);
-    for (int v = 0; v < 8; ++v) {
+    for (int v = 0; v < lili::kNumPetals; ++v) {
         e.setGate(v, true);
     }
     render(e, 9600); // let the touch thump pass
@@ -377,7 +389,7 @@ void testSeedBounded() {
     p.tune.fill(1.0f);
     p.pitch = {1.0f, 1.0f};
     e.setParams(p);
-    for (int v = 0; v < 8; ++v) {
+    for (int v = 0; v < lili::kNumPetals; ++v) {
         e.setGate(v, true);
     }
     const auto s = render(e, 96000);
@@ -395,7 +407,7 @@ void testBloomOffIsIdentical() {
         p.drift = out == &a ? 0.4f : 1.0f;
         p.sharp = {0.2f, 0.5f, 0.7f, 0.9f};
         e.setParams(p);
-        for (int v = 0; v < 8; v += 2) {
+        for (int v = 0; v < lili::kNumPetals; v += 2) {
             e.setGate(v, true);
         }
         render(e, 24000, out);
@@ -427,7 +439,7 @@ void testPollinatorBounded() {
     p.delayModDepth = {1.0f, 1.0f};
     p.delayMix = 0.5f;
     e.setParams(p);
-    for (int v = 0; v < 8; ++v) {
+    for (int v = 0; v < lili::kNumPetals; ++v) {
         e.setGate(v, true);
     }
     const auto s = render(e, static_cast<int>(kSr * 20));

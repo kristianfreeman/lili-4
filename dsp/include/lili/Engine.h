@@ -59,12 +59,12 @@ class Engine {
 
     // Control rate. Cheap enough to call once per audio block.
     void setParams(const Params& params);
-    // Sensor gate for voice 0..7.
-    void setGate(int voice, bool on);
+    // Pad gate for petal 0..3 (sounds both of its oscillators).
+    void setGate(int petal, bool on);
+    bool gate(int petal) const { return pairs_[static_cast<size_t>(petal)].gate; }
 
-    // Seed sample for a group (0 = 1234, 1 = 5678), or nullptr. Any thread; lock-free.
+    // Seed sample for a group (0 = petals 1·2, 1 = 3·4), or nullptr. Any thread; lock-free.
     void setSeed(int group, const SeedSample* sample);
-    bool gate(int voice) const { return voices_[static_cast<size_t>(voice)].gate; }
 
     // Mono engine; `right` may be null or equal to `left`.
     void process(float* left, float* right, int numSamples);
@@ -76,6 +76,10 @@ class Engine {
     // semitones (x = 64/127 is exactly 0 st). Range -80..+12 st.
     static int pitchSemitones(float x);
     static float pitchMultiplier(float x);
+
+    // Petal Spread: oscillator B's offset from A in semitones, 12 u^3 with u = 2x - 1
+    // (fine detune near the centre, +-12 st at the ends).
+    static float spreadSemitones(float x);
 
     // Audio-thread only; copy it out under the host's own synchronisation.
     // Peaks accumulate across process() calls until clearTelemetryPeaks().
@@ -104,12 +108,10 @@ class Engine {
         int delay_ = 1;
     };
 
-    struct Voice {
+    // A petal: two oscillators sharing one pad, envelope and FM routing.
+    struct Pair {
         LinearRamp sensor;
         bool gate = false;
-    };
-
-    struct Pair {
         Smoother sharp;
         Smoother mod;
         HighPass1 tapFilter;
@@ -132,7 +134,7 @@ class Engine {
         float lastWrite = 0.0f;
     };
 
-    void retriggerSensor(Voice& v, const Pair& pair);
+    void retriggerSensor(Pair& pair);
     float processSample();
 
     float sampleRate_ = 44100.0f;
@@ -140,7 +142,6 @@ class Engine {
     EngineConfig config_;
     bool snapOnNextParams_ = true;
 
-    std::array<Voice, kNumVoices> voices_{};
     OscBank<kNumVoices> osc_;
     // Garden engine: per-group petal source (docs/PLAN-garden.md).
     std::array<int, kNumGroups> engine_{};
