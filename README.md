@@ -16,6 +16,11 @@ Not affiliated with SOMA Laboratory or Mike Moreno DSP.
 - **Rendered circuit-board UI.** A vintage green PCB whose signal flow is drawn as a lily: the petals are the 8 voices, the stem is the mix → delay → drive path, and the leaves are the two LFOs. It's rendered in Blender and composited natively. Cream knobs and bat toggles are drawn from sprite strips at the live parameter values. Petals, pads, stem, delay lines, cross-mod arcs, the LFO LEDs and per-pair LED meters glow with the actual audio. See [`docs/ART.md`](docs/ART.md).
 - Validated with `auval` and pluginval (strictness 10, including its GUI tests).
 
+- **Garden engine: where LILI-8 departs from the Lyra.** All of it is opt-in; the classic sound is untouched by default.
+  - **ENGINE** per group: **Classic** (the Lyra-style pulse/triangle), **Wave** (four procedural wavetable families scanned by **TABLE**), or **Seed** (a granular sampler: drop an audio file on the left or right half of the board). The pair **Sharp** knob becomes timbre: pulse shape, wavetable morph, or position in the sample.
+  - **BLOOM / DRIFT**: slow generative growth. Voices breathe awake without notes and drift in tune and timbre, over cycles from minutes to seconds.
+  - **BEE**: the Pollinator, a chaotic Lorenz modulator in place of the Hyper LFO. Freq A sets flight speed and Freq B sets chaos.
+
 ## Playing it
 
 MIDI notes **C1–G1** (36–43) are sensors 1–8. **Hold 1234/5678** makes a group
@@ -24,7 +29,8 @@ drone continuously. On the board:
 - **Knobs:** drag up/down (Shift for fine), double-click to reset, scroll wheel.
 - **Toggles:** click to throw; on 3-way toggles, click above or below the pivot.
 - **Touch pads (S1–S8):** click to latch a voice on (the **Sensor N** parameters).
-- **Hover** any control for its value in real units (Hz, ms, ×, %).
+- **Hover** any control for its value in real units (Hz, ms, st, %, wavetable family, loaded sample).
+- **Drop an audio file** on the left or right half of the board to load a Seed sample for group 1234 or 5678. That group switches to Seed, and the file path is saved with your set.
 
 Every control is a host parameter, so Live's MIDI Map and automation work on all of them.
 

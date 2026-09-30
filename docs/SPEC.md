@@ -288,6 +288,49 @@ close to ±1, where it sharpens the clipped edges.
   `w = x + c·w₋₁`, `y = (1 + c)/2 · (w − w₋₁)`.
 - `LP1(x, fc)`: Pd's `lop~`, where `k = clamp(2π·fc/SR, 0, 1)`, `y += k·(x − y)`.
 
+## Garden engine (LILI-8's own; not in the reference)
+
+Everything here is opt-in. With Engine = Classic, Bloom = 0 and BEE off, the
+engine is bit-identical to the reference port above (tested). See
+`docs/PLAN-garden.md` for the design rationale.
+
+**Petal engine per group** (`engine1234`, `engine5678`): Classic / Wave / Seed.
+Pitch, FM (`f_osc = f · (1 + modSig)`), vibrato, the sensor envelope, the thump
+and Hold are shared by all three. Only the waveform source changes, and the
+per-pair **Sharp** becomes "timbre":
+
+- **Classic:** `sq · s − tri · (1 − s)` as above.
+- **Wave:** `0.6 · WT(family, morph = √s, phase)`.
+  - `WavetableBank` has 4 procedural families (Stem, Reed, Glass, Moss), 8 frames × 2048 samples each.
+  - Each frame is band-limited to 11 per-octave mip levels (level `L` keeps harmonics ≤ 1024 ≫ L, chosen so the top harmonic stays below Nyquist for the current phase increment).
+  - `table` (0..1) scans the families; frames and families crossfade linearly.
+- **Seed:** a granular read of the group's sample, scaled by 0.8.
+  - Two Hann grains of 90 ms at 50% overlap (unity sum).
+  - Rate `= |f_osc| / 130.81 Hz × sr_sample / sr`, so a voice at C3 plays the recording as-is.
+  - Grain start `= wrap(√s + 0.004 · noise + 0.02 · clip(modSig, ±1)) · length`, and the sample loops.
+  - No sample means silence.
+
+**Bloom** (`bloom`, `drift`). Each voice runs two smoothstepped value-noise walks (`walk`, `breath` ∈ [−1, 1]):
+- Segment period `= 300 s · (8/300)^drift`; updated every 32 samples.
+- With `d = bloom`:
+  ```
+  f_osc     ·= 2^(d · 40/1200 · walk)        (±40 cents)
+  sharp_v    = clip(s_pair + 0.3 · d · walk, 0, 1)
+  gain_v     = min(l² + hold_G + 0.6 · d · smoothstep(wake), 1),
+               wake = clip((0.5 + 0.5 · breath − 0.35) / 0.4, 0, 1)
+  ```
+
+**Pollinator** (`bee`). A Lorenz system replaces the Hyper LFO outputs:
+- σ = 10, β = 8/3, ρ = 20 + 25 · x_fb; Euler steps with `dt = max(fA, 0.05) / sr · 0.8`.
+- Outputs:
+  ```
+  sqrLfo = tanh(x / 12)       (voice FM source)
+  delTri = tanh(y / 15)
+  delSqr = clip(z / 25 − 1, ±1)
+  ```
+- Freq A is flight speed, Freq B is chaos. The leaf LEDs follow sign(x) and sign(y).
+- The state resets if it ever goes non-finite.
+
 ## Future (beyond the reference)
 
 - MPE / poly pressure: continuous sensor amount (`l` slews toward the pressure

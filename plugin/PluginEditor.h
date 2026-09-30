@@ -10,7 +10,9 @@
 // docs/ART.md): a board image plus knob/toggle sprite strips, laid out from
 // art/board.json so hit areas match the render exactly. Controls follow the
 // parameters (and host automation); pads and LED meters follow engine telemetry.
-class LiliEditor final : public juce::AudioProcessorEditor, private juce::Timer {
+class LiliEditor final : public juce::AudioProcessorEditor,
+                         public juce::FileDragAndDropTarget,
+                         private juce::Timer {
   public:
     explicit LiliEditor(LiliProcessor& owner);
     ~LiliEditor() override;
@@ -23,6 +25,13 @@ class LiliEditor final : public juce::AudioProcessorEditor, private juce::Timer 
     void mouseUp(const juce::MouseEvent& e) override;
     void mouseDoubleClick(const juce::MouseEvent& e) override;
     void mouseExit(const juce::MouseEvent& e) override;
+
+    // Seed samples: drop an audio file on the left (1234) or right (5678) half.
+    bool isInterestedInFileDrag(const juce::StringArray& files) override;
+    void fileDragEnter(const juce::StringArray& files, int x, int y) override;
+    void fileDragMove(const juce::StringArray& files, int x, int y) override;
+    void fileDragExit(const juce::StringArray& files) override;
+    void filesDropped(const juce::StringArray& files, int x, int y) override;
     void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override;
 
   private:
@@ -84,6 +93,7 @@ class LiliEditor final : public juce::AudioProcessorEditor, private juce::Timer 
     float scale_ = 1.0f;
     int snapshotCountdown_ = 30; // timer ticks until the optional LILI_SNAPSHOT capture
 
+    int dropGroup_ = -1; // group highlighted while an audio file is dragged over
     juce::Font mono_{juce::FontOptions{}};
     Control* readout_ = nullptr; // control whose value tag is shown (hovered or dragged)
 

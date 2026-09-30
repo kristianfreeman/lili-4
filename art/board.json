@@ -81,7 +81,9 @@
     ["lfoFreqA", 440, 548, "FREQ A", 0.41], ["lfoFreqB", 632, 548, "FREQ B", 0.69],
     ["delTime1", 40, 698, "TIME 1", 0.57], ["delTime2", 96, 698, "TIME 2", 0.33], ["delFeedback", 152, 698, "FDBK", 0.76], ["delMix", 208, 698, "MIX", 0.54],
     ["delMod1", 264, 698, "MOD 1", 0.39], ["delMod2", 320, 698, "MOD 2", 0.59],
-    ["distDrive", 656, 698, "DRIVE", 0.7], ["distMix", 712, 698, "MIX", 0.5], ["volume", 768, 698, "VOL", 0.8]
+    ["distDrive", 656, 698, "DRIVE", 0.7], ["distMix", 712, 698, "MIX", 0.5], ["volume", 768, 698, "VOL", 0.8],
+    ["table1234", 246, 516, "TABLE", 0.0], ["table5678", 1030, 516, "TABLE", 0.0],
+    ["bloom", 474, 22, "BLOOM", 0.0], ["drift", 540, 22, "DRIFT", 0.4]
   ],
   "controlStyle": {"knob": "cream", "switch": "toggle", "pad": "comb"},
   "jumperPitch": 34,
@@ -90,6 +92,8 @@
     ["source34", 44, 400, "SOURCE", ["12", "OFF", "LFO"], 1],
     ["source56", 828, 196, "SOURCE", ["78", "OFF", "LFO"], 2],
     ["source78", 828, 400, "SOURCE", ["56", "OFF", "LFO"], 1],
+    ["engine1234", 170, 498, "ENGINE", ["CLASSIC", "WAVE", "SEED"], 0],
+    ["engine5678", 950, 498, "ENGINE", ["CLASSIC", "WAVE", "SEED"], 0],
     ["delSource", 382, 682, "MOD SRC", ["SELF", "OFF", "LFO"], 2],
     ["delWaveform", 450, 682, "WAVE", ["TRI", "SQR"], 0],
     ["lfoAndOr", 1022, 682, "LFO LOGIC", ["AND", "OR"], 0]
@@ -99,7 +103,8 @@
     [236, 394, "SPEED", [["fast34", "FAST", 1]]],
     [1026, 190, "SPEED", [["fast56", "FAST", 0]]],
     [1026, 394, "SPEED", [["fast78", "FAST", 1]]],
-    [830, 682, "GLOBAL", [["switch", "SW", 0], ["totalFb", "T.FB", 1], ["vibrato", "VIB", 0], ["lfoLink", "LINK", 1], ["quantize", "QNT", 0]]]
+    [830, 682, "GLOBAL", [["switch", "SW", 0], ["totalFb", "T.FB", 1], ["vibrato", "VIB", 0], ["lfoLink", "LINK", 1], ["quantize", "QNT", 0]]],
+    [606, 10, "", [["bee", "BEE", 0]]]
   ],
 
   "styleFrameLit": {

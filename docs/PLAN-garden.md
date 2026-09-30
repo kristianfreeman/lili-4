@@ -1,5 +1,7 @@
 # Garden engine: making LILI-8 its own instrument
 
+**Status: implemented** (phases 1–5). Engine math is in `docs/SPEC.md` ("Garden engine"); the layout is in `art/board.json`.
+
 Checkpoint before this work: tag `lyra-port-v1` (the faithful LIRA-8 port).
 
 Goal: keep the organismic feel (slow swells, voices modulating each other,

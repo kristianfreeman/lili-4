@@ -48,6 +48,40 @@ LiliProcessor::LiliProcessor()
     // The reference seeds its per-pair vibrato rates from the clock, so every
     // instance wobbles differently. Keep that.
     seed_ = static_cast<uint32_t>(juce::Random::getSystemRandom().nextInt());
+    formats_.registerBasicFormats();
+}
+
+bool LiliProcessor::loadSeed(int group, const juce::File& file) {
+    if (group < 0 || group >= lili::kNumGroups) {
+        return false;
+    }
+    const std::unique_ptr<juce::AudioFormatReader> reader(formats_.createReaderFor(file));
+    if (reader == nullptr || reader->lengthInSamples <= 0) {
+        return false;
+    }
+    constexpr double kMaxSeconds = 120.0;
+    const auto frames = static_cast<int>(std::min<juce::int64>(
+        reader->lengthInSamples, static_cast<juce::int64>(reader->sampleRate * kMaxSeconds)));
+    const int channels = static_cast<int>(std::max(1u, reader->numChannels));
+    juce::AudioBuffer<float> buffer(channels, frames);
+    reader->read(&buffer, 0, frames, 0, true, true);
+
+    auto sample = std::make_unique<lili::SeedSample>();
+    sample->sampleRate = static_cast<float>(reader->sampleRate);
+    sample->data.assign(static_cast<size_t>(frames), 0.0f);
+    for (int ch = 0; ch < channels; ++ch) { // mix to mono
+        juce::FloatVectorOperations::addWithMultiply(sample->data.data(), buffer.getReadPointer(ch),
+                                                     1.0f / static_cast<float>(channels), frames);
+    }
+    engine_.setSeed(group, sample.get());
+    seedStore_.push_back(std::move(sample)); // kept alive: the audio thread may still read older ones
+    seedFiles_[static_cast<size_t>(group)] = file;
+    return true;
+}
+
+juce::String LiliProcessor::seedName(int group) const {
+    return group >= 0 && group < lili::kNumGroups ? seedFiles_[static_cast<size_t>(group)].getFileName()
+                                                  : juce::String();
 }
 
 bool LiliProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
@@ -152,6 +186,8 @@ juce::AudioProcessorEditor* LiliProcessor::createEditor() { return new LiliEdito
 void LiliProcessor::getStateInformation(juce::MemoryBlock& destData) {
     auto tree = state_.copyState();
     tree.setProperty("seed", static_cast<juce::int64>(seed_), nullptr);
+    tree.setProperty("seedFile1234", seedFiles_[0].getFullPathName(), nullptr);
+    tree.setProperty("seedFile5678", seedFiles_[1].getFullPathName(), nullptr);
     if (const auto xml = tree.createXml()) {
         copyXmlToBinary(*xml, destData);
     }
@@ -164,6 +200,14 @@ void LiliProcessor::setStateInformation(const void* data, int sizeInBytes) {
             if (tree.hasProperty("seed")) {
                 // A saved set keeps its vibrato character; applied on next prepare.
                 seed_ = static_cast<uint32_t>(static_cast<juce::int64>(tree.getProperty("seed")));
+            }
+            // Seed samples are referenced by path; a missing file just leaves that group silent.
+            for (int g = 0; g < lili::kNumGroups; ++g) {
+                const juce::String path =
+                    tree.getProperty(g == 0 ? "seedFile1234" : "seedFile5678").toString();
+                if (juce::File::isAbsolutePath(path) && juce::File(path).existsAsFile()) {
+                    loadSeed(g, juce::File(path));
+                }
             }
             state_.replaceState(tree);
         }

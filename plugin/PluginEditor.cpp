@@ -44,6 +44,11 @@ LiliEditor::LiliEditor(LiliProcessor& owner) : AudioProcessorEditor(owner), proc
             vol->setValueNotifyingHost(0.0f);
         }
     }
+    // LILI_SNAPSHOT_SEED=/path.wav loads a Seed sample into group 5678.
+    const auto seedPath = juce::SystemStats::getEnvironmentVariable("LILI_SNAPSHOT_SEED", {});
+    if (juce::File::isAbsolutePath(seedPath)) {
+        processor_.loadSeed(1, juce::File(seedPath));
+    }
     // LILI_SNAPSHOT_PARAMS="hold1234=1,volume=0" sets normalised parameter values.
     for (const auto& kv : juce::StringArray::fromTokens(
              juce::SystemStats::getEnvironmentVariable("LILI_SNAPSHOT_PARAMS", {}), ",", {})) {
@@ -321,6 +326,19 @@ void LiliEditor::paint(juce::Graphics& g) {
         }
     }
 
+    // While an audio file is dragged over the board, outline the half it would load into.
+    if (dropGroup_ >= 0) {
+        const auto half = getLocalBounds().toFloat().withWidth(static_cast<float>(getWidth()) * 0.5f);
+        const auto area = (dropGroup_ == 0 ? half : half.withX(half.getRight())).reduced(6.0f * scale_);
+        g.setColour(kAmber.withAlpha(0.12f));
+        g.fillRoundedRectangle(area, 12.0f * scale_);
+        g.setColour(kAmber);
+        g.drawRoundedRectangle(area, 12.0f * scale_, 2.0f * scale_);
+        g.setFont(mono_.withHeight(14.0f * scale_));
+        g.drawText(dropGroup_ == 0 ? "SEED 1234" : "SEED 5678", area.withTrimmedTop(area.getHeight() * 0.45f),
+                   juce::Justification::centredTop, false);
+    }
+
     // Value tag for the hovered or dragged control, in the silkscreen face.
     if (readout_ != nullptr) {
         const auto area = readoutArea(*readout_) * scale_;
@@ -359,8 +377,28 @@ juce::String LiliEditor::readoutText(const Control& c) const {
             const int st = lili::Engine::pitchSemitones(v); // quantised to semitones
             value = (st > 0 ? "+" : "") + juce::String(st) + " st";
         } else if (id.startsWith("lfoFreq")) {
+            const auto* bee = processor_.state().getParameter("bee");
+            const bool pollinator = bee != nullptr && bee->getValue() >= 0.5f;
             const float hz = lili::mtof(127.0f * v * v - 75.0f);
-            value = juce::String(hz, hz < 1.0f ? 2 : 1) + " Hz";
+            if (pollinator && id == "lfoFreqB") {
+                value =
+                    "CHAOS " + juce::String::fromUTF8("\xcf\x81") + "=" + juce::String(20.0f + 25.0f * v, 1);
+            } else {
+                value = (pollinator ? "FLIGHT " : "") + juce::String(hz, hz < 1.0f ? 2 : 1) + " Hz";
+            }
+        } else if (id.startsWith("table")) {
+            static const char* const names[] = {"STEM", "REED", "GLASS", "MOSS"};
+            const float f = v * 3.0f;
+            const int i0 = std::min(2, static_cast<int>(f));
+            const float frac = f - static_cast<float>(i0);
+            value = frac < 0.1f ? juce::String(names[i0])
+                    : frac > 0.9f
+                        ? juce::String(names[i0 + 1])
+                        : juce::String(names[i0]) + juce::String::fromUTF8("\xe2\x80\xba") + names[i0 + 1];
+        } else if (id == "drift") {
+            const float period = 300.0f * std::pow(8.0f / 300.0f, v);
+            value = period >= 60.0f ? "~" + juce::String(period / 60.0f, 1) + " min"
+                                    : "~" + juce::String(juce::roundToInt(period)) + " s";
         } else if (id.startsWith("delTime")) {
             const float ms = 1.45125f * std::exp2(12.0f * v);
             value = ms < 1000.0f ? juce::String(ms, ms < 10.0f ? 1 : 0) + " ms"
@@ -373,6 +411,10 @@ juce::String LiliEditor::readoutText(const Control& c) const {
     } else if (!c.options.isEmpty()) {
         const int index = c.kind == Kind::Toggle3 ? juce::roundToInt(v * 2.0f) : juce::roundToInt(v);
         value = c.options[juce::jlimit(0, c.options.size() - 1, index)];
+        if (id.startsWith("engine") && index == lili::PetalSeed) {
+            const auto name = processor_.seedName(id == "engine1234" ? 0 : 1);
+            value += ": " + (name.isNotEmpty() ? name : juce::String("drop an audio file"));
+        }
     } else if (c.kind == Kind::Pad) {
         value = v >= 0.5f ? "LATCHED" : "OFF";
     } else {
@@ -458,6 +500,50 @@ LiliEditor::Control* LiliEditor::controlAt(juce::Point<float> boardPos) {
 
 void LiliEditor::setNormalised(Control& c, float v) {
     c.param->setValueNotifyingHost(juce::jlimit(0.0f, 1.0f, v));
+}
+
+bool LiliEditor::isInterestedInFileDrag(const juce::StringArray& files) {
+    const auto wildcards = processor_.formats().getWildcardForAllFormats();
+    for (const auto& f : files) {
+        if (juce::File(f).hasFileExtension(wildcards.removeCharacters("*"))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void LiliEditor::fileDragEnter(const juce::StringArray& /*files*/, int x, int /*y*/) {
+    dropGroup_ = x < getWidth() / 2 ? 0 : 1;
+    repaint();
+}
+
+void LiliEditor::fileDragMove(const juce::StringArray& files, int x, int y) {
+    const int group = x < getWidth() / 2 ? 0 : 1;
+    if (group != dropGroup_) {
+        fileDragEnter(files, x, y);
+    }
+}
+
+void LiliEditor::fileDragExit(const juce::StringArray& /*files*/) {
+    dropGroup_ = -1;
+    repaint();
+}
+
+void LiliEditor::filesDropped(const juce::StringArray& files, int x, int /*y*/) {
+    dropGroup_ = -1;
+    const int group = x < getWidth() / 2 ? 0 : 1;
+    for (const auto& f : files) {
+        if (processor_.loadSeed(group, juce::File(f))) {
+            // Switch that group to the Seed engine so the drop is heard straight away.
+            if (auto* engine = processor_.state().getParameter(group == 0 ? "engine1234" : "engine5678")) {
+                engine->beginChangeGesture();
+                engine->setValueNotifyingHost(engine->convertTo0to1(static_cast<float>(lili::PetalSeed)));
+                engine->endChangeGesture();
+            }
+            break;
+        }
+    }
+    repaint();
 }
 
 void LiliEditor::mouseExit(const juce::MouseEvent& /*e*/) {
