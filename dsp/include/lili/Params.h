@@ -43,7 +43,16 @@ struct Params {
     // Latched sensor pads (the reference GUI's click-to-hold). Hosts OR these
     // with MIDI gates; the engine itself only sees gates.
     std::array<bool, kNumVoices> latch{};
+
+    // Garden engine (docs/PLAN-garden.md). Defaults reproduce the classic engine.
+    std::array<int, kNumGroups> engine{};  // 0 = classic, 1 = wave, 2 = seed
+    std::array<float, kNumGroups> table{}; // wavetable family scan, 0..1 over Stem/Reed/Glass/Moss
+    float bloom = 0.0f;                    // generative growth depth (0 = off)
+    float drift = 0.4f;                    // bloom speed: 0 = ~5 min cycles, 1 = ~8 s
+    bool bee = false;                      // Pollinator (Lorenz) replaces the Hyper LFO
 };
+
+enum PetalEngine : int { PetalClassic = 0, PetalWave = 1, PetalSeed = 2 };
 
 enum class ParamKind { Continuous, Toggle, Choice };
 
@@ -113,6 +122,13 @@ enum ParamIndex : std::size_t {
     P_SENSOR_6,
     P_SENSOR_7,
     P_SENSOR_8,
+    P_ENGINE_1234,
+    P_ENGINE_5678,
+    P_TABLE_1234,
+    P_TABLE_5678,
+    P_BLOOM,
+    P_DRIFT,
+    P_BEE,
     kNumParams
 };
 
@@ -173,6 +189,13 @@ inline constexpr std::array<ParamInfo, kNumParams> kParamInfo{{
     {"sensor6", "Sensor 6", ParamKind::Toggle, 0, {}, 0},
     {"sensor7", "Sensor 7", ParamKind::Toggle, 0, {}, 0},
     {"sensor8", "Sensor 8", ParamKind::Toggle, 0, {}, 0},
+    {"engine1234", "Engine 1234", ParamKind::Choice, 0, {"Classic", "Wave", "Seed"}, 3},
+    {"engine5678", "Engine 5678", ParamKind::Choice, 0, {"Classic", "Wave", "Seed"}, 3},
+    {"table1234", "Table 1234", ParamKind::Continuous, 0, {}, 0},
+    {"table5678", "Table 5678", ParamKind::Continuous, 0, {}, 0},
+    {"bloom", "Bloom", ParamKind::Continuous, 0, {}, 0},
+    {"drift", "Drift", ParamKind::Continuous, 0.4f, {}, 0},
+    {"bee", "Pollinator", ParamKind::Toggle, 0, {}, 0},
 }};
 // clang-format on
 

@@ -17,6 +17,7 @@ constexpr std::array<int, kNumPairs> kPartnerSwitchOn{3, 0, 1, 2};
 
 constexpr float kVoiceMix = 0.16f;
 constexpr float kPulseWidth = 0.53125f;
+constexpr float kWaveGain = 0.6f; // wavetables are peak-normalised; sit near the classic level
 
 float leak(bool on) { return on ? 1.0f : 0.001f; }
 int groupOf(int voice) { return voice / 4; }
@@ -70,6 +71,10 @@ void Engine::prepare(double sampleRate, const EngineConfig& config) {
         v.sensor.prepare(sampleRate_);
     }
     osc_.prepare(sampleRate_);
+    bank_ = &WavetableBank::instance(); // built here, never on the audio thread
+    for (auto& t : table_) {
+        t.prepare(sampleRate_);
+    }
     freqCoef_ = Smoother::coefficient(sampleRate_);
 
     Noise rng(config_.seed * 2654435761u + 1u);
@@ -120,6 +125,7 @@ void Engine::reset() {
         v.gate = false;
     }
     osc_.reset(kPulseWidth);
+    wavePhase_.fill(0.0f);
     for (auto& pr : pairs_) {
         pr.tapFilter.reset();
         pr.tap.reset();
@@ -191,6 +197,8 @@ void Engine::setParams(const Params& p) {
     }
     for (size_t g = 0; g < kNumGroups; ++g) {
         target(hold_[g], p.hold[g] * p.hold[g]);
+        target(table_[g], p.table[g]);
+        engine_[g] = p.engine[g];
     }
     crossSwitch_ = p.crossSwitch;
     totalFb_ = p.totalFb;
@@ -270,8 +278,10 @@ float Engine::processSample() {
     const float lfoSource = sqrLfo * leak(!totalFb_) + totalFbIn * leak(totalFb_);
 
     std::array<float, kNumGroups> hold{};
+    std::array<float, kNumGroups> family{};
     for (size_t g = 0; g < kNumGroups; ++g) {
         hold[g] = hold_[g].next();
+        family[g] = table_[g].next() * static_cast<float>(WavetableBank::kFamilies - 1);
     }
 
     // Per-pair controls, broadcast to both voices of the pair.
@@ -306,7 +316,16 @@ float Engine::processSample() {
     std::array<float, kNumPairs> pairOut{};
     for (size_t v = 0; v < kNumVoices; ++v) {
         const float sharp = pairSharp[v / 2];
-        const float shaped = square[v] * sharp - triangle[v] * (1.0f - sharp);
+        const size_t g = v / 4;
+        float shaped = 0.0f;
+        if (engine_[g] == PetalWave) {
+            // Sharp is the morph through the table (its smoother holds x^2).
+            const float dt = std::fabs(hz[v]) * invSampleRate_;
+            shaped = kWaveGain * bank_->read(family[g], std::sqrt(sharp), wavePhase_[v], dt);
+            wavePhase_[v] = wrap01(wavePhase_[v] + dt);
+        } else {
+            shaped = square[v] * sharp - triangle[v] * (1.0f - sharp);
+        }
         const float l = voices_[v].sensor.next();
         const float thump = (l > 0.0f && l < 1.0f) ? 0.5f * std::sin(kTwoPi * l) : 0.0f;
         const float gain = std::min(l * l + hold[v / 4], 1.0f);
@@ -424,6 +443,13 @@ void setParam(Params& p, std::size_t index, float value) {
     case P_SENSOR_6:
     case P_SENSOR_7:
     case P_SENSOR_8: p.latch[at(P_SENSOR_1, index)] = on; break;
+    case P_ENGINE_1234:
+    case P_ENGINE_5678: p.engine[at(P_ENGINE_1234, index)] = choice; break;
+    case P_TABLE_1234:
+    case P_TABLE_5678: p.table[at(P_TABLE_1234, index)] = value; break;
+    case P_BLOOM: p.bloom = value; break;
+    case P_DRIFT: p.drift = value; break;
+    case P_BEE: p.bee = on; break;
     default: break;
     }
 }

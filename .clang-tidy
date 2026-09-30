@@ -1,6 +1,7 @@
 ---
 # Scope: our code only (dsp/, plugin/, tests/). JUCE headers are excluded by
-# HeaderFilterRegex.
+# HeaderFilterRegex. optin.performance.Padding is off: padding matters for
+# types allocated in bulk; the engine is one object and keeps related state together.
 Checks: >
   -*,
   bugprone-*,
@@ -8,6 +9,7 @@ Checks: >
   -bugprone-exception-escape,
   -bugprone-narrowing-conversions,
   clang-analyzer-*,
+  -clang-analyzer-optin.performance.Padding,
   cppcoreguidelines-init-variables,
   cppcoreguidelines-pro-type-member-init,
   misc-const-correctness,

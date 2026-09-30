@@ -1,4 +1,4 @@
-add_library(lili_dsp STATIC src/Engine.cpp)
+add_library(lili_dsp STATIC src/Engine.cpp src/Wavetable.cpp)
 add_library(lili::dsp ALIAS lili_dsp)
 target_include_directories(lili_dsp PUBLIC include)
 target_compile_features(lili_dsp PUBLIC cxx_std_20)

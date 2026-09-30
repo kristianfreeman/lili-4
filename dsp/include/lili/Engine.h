@@ -4,6 +4,7 @@
 
 #include "lili/Params.h"
 #include "lili/Primitives.h"
+#include "lili/Wavetable.h"
 
 #include <array>
 #include <cstdint>
@@ -128,6 +129,11 @@ class Engine {
 
     std::array<Voice, kNumVoices> voices_{};
     OscBank<kNumVoices> osc_;
+    // Garden engine: per-group petal source (docs/PLAN-garden.md).
+    std::array<int, kNumGroups> engine_{};
+    std::array<Smoother, kNumGroups> table_{};
+    alignas(16) std::array<float, kNumVoices> wavePhase_{};
+    const WavetableBank* bank_ = nullptr;
     // Per-voice pitch smoothing, kept as flat arrays so it vectorises.
     alignas(16) std::array<float, kNumVoices> freq_{};
     alignas(16) std::array<float, kNumVoices> freqTarget_{};

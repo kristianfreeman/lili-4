@@ -54,5 +54,10 @@ int main() {
     full.delayModDepth = {0.5f, 0.5f};
     full.lfoLink = true;
     bench("all voices, FM, delay", full, 8);
+
+    lili::Params wave = full;
+    wave.engine = {lili::PetalWave, lili::PetalWave};
+    wave.table = {0.35f, 0.8f};
+    bench("wave engine, same patch", wave, 8);
     return 0;
 }

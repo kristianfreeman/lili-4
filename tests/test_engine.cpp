@@ -1,5 +1,6 @@
 // Engine tests. Dependency-free on purpose: `ctest` or run the binary directly.
 #include "lili/Engine.h"
+#include "lili/Wavetable.h"
 
 #include <algorithm>
 #include <cmath>
@@ -234,6 +235,85 @@ void testTelemetry() {
           "telemetry: LFO A rate");
 }
 
+// Magnitude of harmonic k in one wavetable cycle (direct DFT).
+double harmonicMagnitude(const float* t, int k) {
+    const int n = lili::WavetableBank::kSize;
+    double re = 0.0;
+    double im = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const double a = 2.0 * 3.141592653589793 * k * i / n;
+        re += t[i] * std::cos(a);
+        im -= t[i] * std::sin(a);
+    }
+    return 2.0 * std::sqrt(re * re + im * im) / n;
+}
+
+void testWavetableBandLimited() {
+    const auto& bank = lili::WavetableBank::instance();
+    double worst = 0.0;
+    for (int fam = 0; fam < lili::WavetableBank::kFamilies; ++fam) {
+        for (int level = 0; level < lili::WavetableBank::kLevels; ++level) {
+            const int limit = (lili::WavetableBank::kSize / 2) >> level;
+            const float* t = bank.frame(fam, 3, level);
+            for (int k = limit + 1; k < std::min(limit + 24, lili::WavetableBank::kSize / 2); ++k) {
+                worst = std::max(worst, harmonicMagnitude(t, k));
+            }
+        }
+    }
+    check(worst < 1e-4, "wavetable mips have no energy above their limit (" + std::to_string(worst) + ")");
+    // The level chosen for a pitch must keep its top harmonic below Nyquist.
+    for (const float hz : {50.0f, 440.0f, 2000.0f, 9000.0f}) {
+        const float dt = hz / 48000.0f;
+        const int limit = (lili::WavetableBank::kSize / 2) >> lili::WavetableBank::levelFor(dt);
+        check(static_cast<float>(limit) * dt <= 0.5f,
+              "mip level alias-free at " + std::to_string(hz) + " Hz");
+    }
+}
+
+void testWavetablePitchAndRange() {
+    const auto& bank = lili::WavetableBank::instance();
+    const float dt = 220.0f / 48000.0f;
+    float phase = 0.0f;
+    int crossings = 0;
+    float prev = bank.read(0.0f, 0.0f, phase, dt);
+    float peak = 0.0f;
+    for (int i = 0; i < 48000; ++i) {
+        phase += dt;
+        phase -= std::floor(phase);
+        const float x = bank.read(0.0f, 0.0f, phase, dt);
+        crossings += (prev < 0.0f && x >= 0.0f) ? 1 : 0;
+        prev = x;
+    }
+    check(std::abs(crossings - 220) <= 1, "wavetable runs at 220 Hz (" + std::to_string(crossings) + ")");
+    for (int f = 0; f <= 12; ++f) {
+        for (int m = 0; m <= 8; ++m) {
+            const float fam = static_cast<float>(f) * 0.25f;
+            const float morph = static_cast<float>(m) * 0.125f;
+            for (int i = 0; i < 256; ++i) {
+                peak = std::max(peak, std::fabs(bank.read(fam, morph, static_cast<float>(i) / 256.0f, dt)));
+            }
+        }
+    }
+    check(peak <= 1.05f && peak > 0.5f, "wavetables stay normalised (peak " + std::to_string(peak) + ")");
+}
+
+void testWaveEngine() {
+    lili::Engine e;
+    e.prepare(kSr);
+    lili::Params p;
+    p.engine = {lili::PetalWave, lili::PetalWave};
+    p.table = {0.4f, 0.9f};
+    p.sharp = {0.3f, 0.6f, 0.9f, 0.1f};
+    p.mod = {0.8f, 0.0f, 0.5f, 0.0f};
+    p.source = {0, 1, 2, 1};
+    e.setParams(p);
+    for (int v = 0; v < 8; ++v) {
+        e.setGate(v, true);
+    }
+    const auto s = render(e, 48000);
+    check(s.finite && s.rms > 1e-3 && s.peak < 2.0f, "wave engine is audible, finite and bounded");
+}
+
 void testParamTableRoundTrip() {
     lili::Params p;
     for (size_t i = 0; i < lili::kNumParams; ++i) {
@@ -260,6 +340,9 @@ int main() {
         {"deterministic with seed", testDeterministicWithSeed},
         {"stress extremes", testStressExtremes},
         {"telemetry", testTelemetry},
+        {"wavetable band-limited", testWavetableBandLimited},
+        {"wavetable pitch and range", testWavetablePitchAndRange},
+        {"wave engine", testWaveEngine},
         {"param table round trip", testParamTableRoundTrip},
     };
     for (const auto& [name, fn] : tests) {
