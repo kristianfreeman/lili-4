@@ -36,7 +36,7 @@
   ],
   "leafRibs": ["M550 528 Q470 560 400 624", "M570 528 Q650 560 720 624"],
   "xmod": ["M346 209 C330 150 385 95 437 106", "M774 209 C790 150 735 95 683 106"],
-  "totalFb": "M578 722 H800 V460 Q800 448 788 448 H646 L590 324",
+  "totalFb": "M578 722 H800 V380 Q800 368 788 368 H690 L600 320",
 
   "vias": [[560, 194], [481.4, 355.1], [638.6, 355.1]],
   "stamenLeds": [[560, 180], [471.5, 361.9], [648.5, 361.9]],
@@ -56,7 +56,7 @@
     [40, 96, "PETAL 1", "left", 1], [40, 300, "PETAL 2", "left", 1], [40, 504, "GROUP 1·2", "left", 1],
     [1080, 96, "PETAL 3", "right", 1], [1080, 300, "PETAL 4", "right", 1], [1080, 504, "GROUP 3·4", "right", 1],
     [40, 677, "ECHO", "left", 1], [652, 677, "OUTPUT · GLOBAL", "left", 1],
-    [338, 142, "XM", "center", 0], [782, 142, "XM", "center", 0], [652, 440, "TOTAL FB", "left", 0],
+    [338, 142, "XM", "center", 0], [782, 142, "XM", "center", 0], [704, 360, "TOTAL FB", "left", 0],
     [572, 214, "TP1", "left", 0], [476, 384, "TP2", "center", 0], [644, 384, "TP3", "center", 0],
     [532, 590, "ECHO A", "right", 0], [590, 590, "ECHO B", "left", 0],
     [470, 660, "LFO A", "center", 1], [650, 660, "LFO B", "center", 1],
@@ -78,7 +78,7 @@
     ["delTime1", 40, 698, "TIME 1", 0.57], ["delTime2", 96, 698, "TIME 2", 0.33], ["delFeedback", 152, 698, "FDBK", 0.76], ["delMix", 208, 698, "MIX", 0.54],
     ["delMod1", 264, 698, "MOD 1", 0.39], ["delMod2", 320, 698, "MOD 2", 0.59],
     ["distDrive", 656, 698, "DRIVE", 0.7], ["distMix", 712, 698, "MIX", 0.5], ["volume", 768, 698, "VOL", 0.8],
-    ["bloom", 474, 22, "BLOOM", 0.0], ["drift", 540, 22, "DRIFT", 0.4]
+    ["bloom", 452, 423, "BLOOM", 0.0], ["drift", 616, 423, "DRIFT", 0.4]
   ],
   "controlStyle": {"knob": "cream", "switch": "toggle", "pad": "comb"},
   "jumperPitch": 34,
@@ -99,7 +99,7 @@
     [1026, 190, "SPEED", [["fast3", "FAST", 0]]],
     [1026, 394, "SPEED", [["fast4", "FAST", 1]]],
     [830, 682, "GLOBAL", [["switch", "SW", 0], ["totalFb", "T.FB", 1], ["vibrato", "VIB", 0], ["lfoLink", "LINK", 1], ["quantize", "QNT", 0]]],
-    [606, 10, "", [["bee", "BEE", 0]]]
+    [379, 394, "", [["bee", "BEE", 0]]]
   ],
 
   "styleFrameLit": {
