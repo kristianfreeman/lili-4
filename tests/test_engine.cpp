@@ -384,6 +384,59 @@ void testSeedBounded() {
     check(s.finite && s.peak < 4.0f && s.rms > 1e-3, "seed engine bounded under full FM, extreme tune");
 }
 
+void testBloomOffIsIdentical() {
+    // Bloom 0 must not change the sound at all, whatever Drift says.
+    std::vector<float> a;
+    std::vector<float> b;
+    for (auto* out : {&a, &b}) {
+        lili::Engine e;
+        e.prepare(kSr);
+        lili::Params p;
+        p.drift = out == &a ? 0.4f : 1.0f;
+        p.sharp = {0.2f, 0.5f, 0.7f, 0.9f};
+        e.setParams(p);
+        for (int v = 0; v < 8; v += 2) {
+            e.setGate(v, true);
+        }
+        render(e, 24000, out);
+    }
+    check(a == b, "bloom 0 is bit-identical to the classic engine");
+}
+
+void testBloomWakesVoices() {
+    lili::Engine e;
+    e.prepare(kSr);
+    lili::Params p;
+    p.bloom = 1.0f;
+    p.drift = 1.0f; // ~8 s cycles
+    e.setParams(p);
+    const auto s = render(e, static_cast<int>(kSr * 20));
+    check(s.finite && s.rms > 1e-3 && s.peak < 2.0f, "bloom breathes voices awake without any gates");
+}
+
+void testPollinatorBounded() {
+    lili::Engine e;
+    e.prepare(kSr);
+    lili::Params p;
+    p.bee = true;
+    p.lfoFreqA = 1.0f; // fastest flight
+    p.lfoFreqB = 1.0f; // most chaos
+    p.source = {2, 2, 2, 2};
+    p.mod.fill(1.0f);
+    p.delaySource = 2;
+    p.delayModDepth = {1.0f, 1.0f};
+    p.delayMix = 0.5f;
+    e.setParams(p);
+    for (int v = 0; v < 8; ++v) {
+        e.setGate(v, true);
+    }
+    const auto s = render(e, static_cast<int>(kSr * 20));
+    const auto& t = e.telemetry();
+    check(s.finite && s.peak < 4.0f, "pollinator stays finite and bounded");
+    check(t.lfoHzA == 0.0f && (t.lfoPhaseA == 0.0f || t.lfoPhaseA == 0.5f),
+          "pollinator drives the leaf LEDs");
+}
+
 void testParamTableRoundTrip() {
     lili::Params p;
     for (size_t i = 0; i < lili::kNumParams; ++i) {
@@ -416,6 +469,9 @@ int main() {
         {"seed silent without sample", testSeedSilentWithoutSample},
         {"seed follows tune", testSeedFollowsTune},
         {"seed bounded", testSeedBounded},
+        {"bloom off is identical", testBloomOffIsIdentical},
+        {"bloom wakes voices", testBloomWakesVoices},
+        {"pollinator bounded", testPollinatorBounded},
         {"param table round trip", testParamTableRoundTrip},
     };
     for (const auto& [name, fn] : tests) {

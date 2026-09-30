@@ -74,6 +74,13 @@ void Engine::prepare(double sampleRate, const EngineConfig& config) {
     osc_.prepare(sampleRate_);
     bank_ = &WavetableBank::instance(); // built here, never on the audio thread
     grainLength_ = std::max(64, static_cast<int>(0.09f * sampleRate_));
+    bloom_.prepare(sampleRate_);
+    bloomRng_.seed(config_.seed * 31u + 7u);
+    for (auto& b : bloomVoices_) { // every voice starts somewhere different in its walk
+        b.from = {bloomRng_.next(), bloomRng_.next()};
+        b.to = {bloomRng_.next(), bloomRng_.next()};
+        b.t = 0.5f + 0.5f * bloomRng_.next();
+    }
     for (size_t v = 0; v < seedVoices_.size(); ++v) {
         seedVoices_[v].rng.seed(config_.seed * 7919u + static_cast<uint32_t>(v) + 1u);
     }
@@ -131,6 +138,12 @@ void Engine::reset() {
     }
     osc_.reset(kPulseWidth);
     wavePhase_.fill(0.0f);
+    bloomTune_.fill(1.0f);
+    bloomTimbre_.fill(0.0f);
+    bloomBreath_.fill(0.0f);
+    bloomCountdown_ = 0;
+    lorenzX_ = lorenzY_ = 1.0;
+    lorenzZ_ = 20.0;
     for (auto& sv : seedVoices_) {
         sv.grains = {};
         sv.untilNext = 0;
@@ -162,6 +175,28 @@ void Engine::retriggerSensor(Voice& v, const Pair& pair) {
     const float attackMs = pair.fast ? 100.0f : 200.0f;
     const float releaseMs = pair.fast ? 100.0f : 8000.0f;
     v.sensor.rampTo(v.gate ? 1.0f : 0.0f, v.gate ? attackMs : releaseMs);
+}
+
+// Bloom: each voice follows two slow smoothstepped random walks. At bloom 0
+// every factor is exactly neutral (x1, +0), so the engine is unchanged.
+void Engine::updateBloom() {
+    const float depth = bloom_.next();
+    for (size_t v = 0; v < kNumVoices; ++v) {
+        auto& b = bloomVoices_[v];
+        b.t += bloomInc_;
+        if (b.t >= 1.0f) {
+            b.t -= std::floor(b.t);
+            b.from = b.to;
+            b.to = {bloomRng_.next(), bloomRng_.next()};
+        }
+        const float s = b.t * b.t * (3.0f - 2.0f * b.t);
+        const float walk = b.from[0] + s * (b.to[0] - b.from[0]);
+        const float breath = 0.5f + 0.5f * (b.from[1] + s * (b.to[1] - b.from[1]));
+        const float wake = clampf((breath - 0.35f) / 0.4f, 0.0f, 1.0f); // asleep below 0.35, awake above 0.75
+        bloomTune_[v] = depth > 0.0f ? std::exp2(depth * (40.0f / 1200.0f) * walk) : 1.0f;
+        bloomTimbre_[v] = depth * 0.3f * walk;
+        bloomBreath_[v] = depth * 0.6f * wake * wake * (3.0f - 2.0f * wake);
+    }
 }
 
 void Engine::setSeed(int group, const SeedSample* sample) {
@@ -261,6 +296,12 @@ void Engine::setParams(const Params& p) {
     target(lfoFreqB_, hyperLfoHz(p.lfoFreqB));
     lfoOr_ = p.lfoAndOr != 0;
     lfoLink_ = p.lfoLink;
+    bee_ = p.bee;
+    beeRho_ = 20.0f + 25.0f * p.lfoFreqB; // Freq B becomes "chaos" in Pollinator mode
+    target(bloom_, p.bloom);
+    // Drift: segment period from ~5 min (0) to ~8 s (1), exponentially.
+    const float period = 300.0f * std::pow(8.0f / 300.0f, p.drift);
+    bloomInc_ = static_cast<float>(kBloomBlock) / (period * sampleRate_);
 
     for (size_t k = 0; k < 2; ++k) {
         target(delay_[k].timeMs, 1.45125f * std::exp2(12.0f * p.delayTime[k]));
@@ -289,10 +330,17 @@ void Engine::process(float* left, float* right, int numSamples) {
         }
     }
 
-    tm.lfoPhaseA = lfoPhaseA_;
-    tm.lfoPhaseB = lfoPhaseB_;
-    tm.lfoHzA = lfoFreqA_.value();
-    tm.lfoHzB = lfoFreqB_.value();
+    if (bee_) {
+        // Leaf LEDs flicker with the sign of the flight ("wings"): phase 0 = lit, 0.5 = dark.
+        tm.lfoPhaseA = lorenzX_ > 0.0 ? 0.0f : 0.5f;
+        tm.lfoPhaseB = lorenzY_ > 0.0 ? 0.0f : 0.5f;
+        tm.lfoHzA = tm.lfoHzB = 0.0f;
+    } else {
+        tm.lfoPhaseA = lfoPhaseA_;
+        tm.lfoPhaseB = lfoPhaseB_;
+        tm.lfoHzA = lfoFreqA_.value();
+        tm.lfoHzB = lfoFreqB_.value();
+    }
     tm.delayMs = {delay_[0].timeMs.value(), delay_[1].timeMs.value()};
 }
 
@@ -318,9 +366,31 @@ float Engine::processSample() {
     const float fBEff = fB * (1.0f + (lfoLink_ ? 0.5f * sqA : 0.0f));
     lfoPhaseB_ = wrap01(lfoPhaseB_ + fBEff * invSampleRate_);
 
-    const float sqrLfo = lfoOr_ ? 0.5f * (sqA + sqB) : sqA * sqB;
-    const float delSqr = 0.5f * (sqA + sqB);
-    const float delTri = 0.5f * (triA + triB);
+    float sqrLfo = lfoOr_ ? 0.5f * (sqA + sqB) : sqA * sqB;
+    float delSqr = 0.5f * (sqA + sqB);
+    float delTri = 0.5f * (triA + triB);
+    if (bee_) {
+        // Pollinator: Lorenz flight (sigma 10, beta 8/3). Freq A sets the speed,
+        // Freq B the chaos (rho). Euler is stable here: dt <= ~0.003 per sample.
+        const double dt = static_cast<double>(std::max(fA, 0.05f) * invSampleRate_) * 0.8;
+        const double dx = 10.0 * (lorenzY_ - lorenzX_);
+        const double dy = lorenzX_ * (static_cast<double>(beeRho_) - lorenzZ_) - lorenzY_;
+        const double dz = lorenzX_ * lorenzY_ - (8.0 / 3.0) * lorenzZ_;
+        lorenzX_ += dx * dt;
+        lorenzY_ += dy * dt;
+        lorenzZ_ += dz * dt;
+        if (!std::isfinite(lorenzX_ + lorenzY_ + lorenzZ_) || std::fabs(lorenzZ_) > 1e3) {
+            lorenzX_ = lorenzY_ = 1.0;
+            lorenzZ_ = 20.0;
+        }
+        sqrLfo = std::tanh(static_cast<float>(lorenzX_) / 12.0f);
+        delTri = std::tanh(static_cast<float>(lorenzY_) / 15.0f);
+        delSqr = clampf(static_cast<float>(lorenzZ_) / 25.0f - 1.0f, -1.0f, 1.0f);
+    }
+    if (--bloomCountdown_ <= 0) {
+        bloomCountdown_ = kBloomBlock;
+        updateBloom();
+    }
 
     // --- Voices ------------------------------------------------------------
     std::array<float, kNumPairs> tapsIn{};
@@ -361,7 +431,7 @@ float Engine::processSample() {
     }
     for (size_t v = 0; v < kNumVoices; ++v) {
         freq_[v] += freqCoef_ * (freqTarget_[v] - freq_[v]);
-        hz[v] = freq_[v] * pairFreqScale[v / 2];
+        hz[v] = freq_[v] * pairFreqScale[v / 2] * bloomTune_[v];
     }
 
     alignas(16) std::array<float, kNumVoices> square{};
@@ -370,7 +440,7 @@ float Engine::processSample() {
 
     std::array<float, kNumPairs> pairOut{};
     for (size_t v = 0; v < kNumVoices; ++v) {
-        const float sharp = pairSharp[v / 2];
+        const float sharp = clampf(pairSharp[v / 2] + bloomTimbre_[v], 0.0f, 1.0f);
         const size_t g = v / 4;
         float shaped = 0.0f;
         if (engine_[g] == PetalWave) {
@@ -388,7 +458,7 @@ float Engine::processSample() {
         }
         const float l = voices_[v].sensor.next();
         const float thump = (l > 0.0f && l < 1.0f) ? 0.5f * std::sin(kTwoPi * l) : 0.0f;
-        const float gain = std::min(l * l + hold[v / 4], 1.0f);
+        const float gain = std::min(l * l + hold[v / 4] + bloomBreath_[v], 1.0f);
         tm.voiceGain[v] = gain;
         pairOut[v / 2] += (shaped + thump) * gain;
     }

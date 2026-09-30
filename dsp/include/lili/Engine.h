@@ -182,6 +182,28 @@ class Engine {
     bool lfoOr_ = false;
     bool lfoLink_ = false;
 
+    // Pollinator: a Lorenz attractor standing in for the Hyper LFO.
+    bool bee_ = false;
+    float beeRho_ = 28.0f;
+    double lorenzX_ = 1.0, lorenzY_ = 1.0, lorenzZ_ = 20.0;
+
+    // Bloom: per-voice slow value noise, evaluated every kBloomBlock samples.
+    static constexpr int kBloomBlock = 32;
+    struct BloomVoice {
+        std::array<float, 2> from{}; // [0] tune/timbre walk, [1] breath walk, both in [-1, 1]
+        std::array<float, 2> to{};
+        float t = 0.0f;
+    };
+    void updateBloom();
+    Smoother bloom_;
+    float bloomInc_ = 0.0f; // segment progress per bloom block
+    int bloomCountdown_ = 0;
+    Noise bloomRng_;
+    std::array<BloomVoice, kNumVoices> bloomVoices_{};
+    std::array<float, kNumVoices> bloomTune_{};   // frequency multiplier
+    std::array<float, kNumVoices> bloomTimbre_{}; // added to Sharp
+    std::array<float, kNumVoices> bloomBreath_{}; // added to the voice gain
+
     // Delay
     std::array<DelayChannel, 2> delay_{};
     Smoother delayFeedback_, delayMix_;
