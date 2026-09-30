@@ -18,6 +18,7 @@ constexpr std::array<int, kNumPairs> kPartnerSwitchOn{3, 0, 1, 2};
 constexpr float kVoiceMix = 0.16f;
 constexpr float kPulseWidth = 0.53125f;
 constexpr float kWaveGain = 0.6f; // wavetables are peak-normalised; sit near the classic level
+constexpr float kSeedGain = 0.8f; // user samples are rarely at full scale
 
 float leak(bool on) { return on ? 1.0f : 0.001f; }
 int groupOf(int voice) { return voice / 4; }
@@ -72,6 +73,10 @@ void Engine::prepare(double sampleRate, const EngineConfig& config) {
     }
     osc_.prepare(sampleRate_);
     bank_ = &WavetableBank::instance(); // built here, never on the audio thread
+    grainLength_ = std::max(64, static_cast<int>(0.09f * sampleRate_));
+    for (size_t v = 0; v < seedVoices_.size(); ++v) {
+        seedVoices_[v].rng.seed(config_.seed * 7919u + static_cast<uint32_t>(v) + 1u);
+    }
     for (auto& t : table_) {
         t.prepare(sampleRate_);
     }
@@ -126,6 +131,11 @@ void Engine::reset() {
     }
     osc_.reset(kPulseWidth);
     wavePhase_.fill(0.0f);
+    for (auto& sv : seedVoices_) {
+        sv.grains = {};
+        sv.untilNext = 0;
+        sv.next = 0;
+    }
     for (auto& pr : pairs_) {
         pr.tapFilter.reset();
         pr.tap.reset();
@@ -152,6 +162,49 @@ void Engine::retriggerSensor(Voice& v, const Pair& pair) {
     const float attackMs = pair.fast ? 100.0f : 200.0f;
     const float releaseMs = pair.fast ? 100.0f : 8000.0f;
     v.sensor.rampTo(v.gate ? 1.0f : 0.0f, v.gate ? attackMs : releaseMs);
+}
+
+void Engine::setSeed(int group, const SeedSample* sample) {
+    if (group >= 0 && group < kNumGroups) {
+        seeds_[static_cast<size_t>(group)].store(sample, std::memory_order_release);
+    }
+}
+
+// Two Hann grains at 50% overlap (they sum to unity gain). Tune sets the
+// playback rate against a C3 root, timbre (Sharp) the read position, and FM
+// both bends the rate (via hz) and scatters where new grains start.
+float Engine::seedPetal(SeedVoice& sv, const SeedSample& s, float hz, float timbre, float fm) {
+    const auto frames = static_cast<double>(s.data.size());
+    if (--sv.untilNext <= 0) {
+        sv.untilNext = grainLength_ / 2;
+        auto& grain = sv.grains[sv.next];
+        sv.next ^= 1u;
+        const double spread = 0.004 * sv.rng.next() + 0.02 * static_cast<double>(clampf(fm, -1.0f, 1.0f));
+        const double start = static_cast<double>(timbre) + spread;
+        grain.pos = (start - std::floor(start)) * frames;
+        grain.age = 0;
+        grain.active = true;
+    }
+    const double rate = static_cast<double>(std::fabs(hz) / kSeedRootHz * s.sampleRate * invSampleRate_);
+    const float invLength = 1.0f / static_cast<float>(grainLength_);
+    float out = 0.0f;
+    for (auto& grain : sv.grains) {
+        if (!grain.active) {
+            continue;
+        }
+        const auto i0 = static_cast<size_t>(grain.pos);
+        const size_t i1 = i0 + 1 < s.data.size() ? i0 + 1 : 0;
+        const auto frac = static_cast<float>(grain.pos - static_cast<double>(i0));
+        const float sample = s.data[i0] + frac * (s.data[i1] - s.data[i0]);
+        const float window = 0.5f - 0.5f * std::cos(kTwoPi * static_cast<float>(grain.age) * invLength);
+        out += sample * window;
+        grain.pos += rate;
+        grain.pos -= frames * std::floor(grain.pos / frames); // loop the sample
+        if (++grain.age >= grainLength_) {
+            grain.active = false;
+        }
+    }
+    return kSeedGain * out;
 }
 
 void Engine::setGate(int voice, bool on) {
@@ -287,6 +340,7 @@ float Engine::processSample() {
     // Per-pair controls, broadcast to both voices of the pair.
     std::array<float, kNumPairs> pairFreqScale{};
     std::array<float, kNumPairs> pairSharp{};
+    std::array<float, kNumPairs> pairFm{};
     alignas(16) std::array<float, kNumVoices> hz{};
     alignas(16) std::array<float, kNumVoices> pw{};
     for (size_t i = 0; i < kNumPairs; ++i) {
@@ -296,6 +350,7 @@ float Engine::processSample() {
         const float source = cross * leak(pr.source == 0) + lfoSource * leak(pr.source == 2);
         const float fmIndex = source * pr.mod.next();
         const float fmAmount = 1.0f + fmIndex;
+        pairFm[i] = fmIndex;
         tm.fmPeak[i] = std::max(tm.fmPeak[i], std::fabs(fmIndex));
         pairSharp[i] = pr.sharp.next();
 
@@ -323,6 +378,11 @@ float Engine::processSample() {
             const float dt = std::fabs(hz[v]) * invSampleRate_;
             shaped = kWaveGain * bank_->read(family[g], std::sqrt(sharp), wavePhase_[v], dt);
             wavePhase_[v] = wrap01(wavePhase_[v] + dt);
+        } else if (engine_[g] == PetalSeed) {
+            const SeedSample* seed = seeds_[g].load(std::memory_order_acquire);
+            shaped = seed != nullptr && !seed->data.empty()
+                         ? seedPetal(seedVoices_[v], *seed, hz[v], std::sqrt(sharp), pairFm[v / 2])
+                         : 0.0f;
         } else {
             shaped = square[v] * sharp - triangle[v] * (1.0f - sharp);
         }

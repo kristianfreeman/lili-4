@@ -314,6 +314,76 @@ void testWaveEngine() {
     check(s.finite && s.rms > 1e-3 && s.peak < 2.0f, "wave engine is audible, finite and bounded");
 }
 
+lili::SeedSample sineSeed(float hz, float seconds) {
+    lili::SeedSample s;
+    s.sampleRate = 48000.0f;
+    s.data.resize(static_cast<size_t>(seconds * s.sampleRate));
+    for (size_t i = 0; i < s.data.size(); ++i) {
+        s.data[i] = std::sin(2.0f * 3.14159265f * hz * static_cast<float>(i) / s.sampleRate);
+    }
+    return s;
+}
+
+void testSeedSilentWithoutSample() {
+    lili::Engine e;
+    e.prepare(kSr);
+    lili::Params p;
+    p.engine = {lili::PetalSeed, lili::PetalSeed};
+    e.setParams(p);
+    for (int v = 0; v < 8; ++v) {
+        e.setGate(v, true);
+    }
+    render(e, 9600); // let the touch thump pass
+    const auto s = render(e, 24000);
+    check(s.finite && s.peak < 1e-3f, "seed voices are silent until a sample is loaded");
+}
+
+void testSeedFollowsTune() {
+    // A C3 sine played by a voice sounds at that voice's own frequency.
+    const auto seed = sineSeed(lili::Engine::kSeedRootHz, 2.0f);
+    lili::Engine e;
+    e.prepare(kSr);
+    e.setSeed(0, &seed);
+    lili::Params p;
+    p.engine = {lili::PetalSeed, lili::PetalClassic};
+    p.distMix = 0.0f; // keep the output linear
+    p.tune[0] = 0.6f;
+    e.setParams(p);
+    e.setGate(0, true);
+    render(e, 24000);
+    std::vector<float> out;
+    render(e, 48000, &out);
+    int crossings = 0;
+    for (size_t i = 1; i < out.size(); ++i) {
+        crossings += (out[i - 1] < 0.0f && out[i] >= 0.0f) ? 1 : 0;
+    }
+    const float expected = lili::Engine::voiceFrequency(p, 0);
+    check(std::fabs(static_cast<float>(crossings) - expected) < 0.05f * expected,
+          "seed pitch follows Tune (" + std::to_string(crossings) + " vs " + std::to_string(expected) +
+              " Hz)");
+}
+
+void testSeedBounded() {
+    const auto seed = sineSeed(220.0f, 0.5f);
+    lili::Engine e;
+    e.prepare(kSr);
+    e.setSeed(0, &seed);
+    e.setSeed(1, &seed);
+    lili::Params p;
+    p.engine = {lili::PetalSeed, lili::PetalSeed};
+    p.mod.fill(1.0f);
+    p.source = {0, 2, 0, 2};
+    p.sharp = {0.0f, 0.4f, 0.99f, 1.0f};
+    p.tune.fill(1.0f);
+    p.pitch = {1.0f, 1.0f};
+    e.setParams(p);
+    for (int v = 0; v < 8; ++v) {
+        e.setGate(v, true);
+    }
+    const auto s = render(e, 96000);
+    check(s.finite && s.peak < 4.0f && s.rms > 1e-3, "seed engine bounded under full FM, extreme tune");
+}
+
 void testParamTableRoundTrip() {
     lili::Params p;
     for (size_t i = 0; i < lili::kNumParams; ++i) {
@@ -343,6 +413,9 @@ int main() {
         {"wavetable band-limited", testWavetableBandLimited},
         {"wavetable pitch and range", testWavetablePitchAndRange},
         {"wave engine", testWaveEngine},
+        {"seed silent without sample", testSeedSilentWithoutSample},
+        {"seed follows tune", testSeedFollowsTune},
+        {"seed bounded", testSeedBounded},
         {"param table round trip", testParamTableRoundTrip},
     };
     for (const auto& [name, fn] : tests) {

@@ -7,7 +7,9 @@
 #include "lili/Wavetable.h"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
+#include <vector>
 
 namespace lili {
 
@@ -40,9 +42,17 @@ struct Telemetry {
     float totalFbPeak = 0.0f;
 };
 
+// A mono sample for the Seed petal engine. The owner (the plugin) keeps it alive
+// for as long as the engine may read it; the engine never frees it.
+struct SeedSample {
+    std::vector<float> data;
+    float sampleRate = 48000.0f;
+};
+
 class Engine {
   public:
     static constexpr float kMaxDelayMs = 5944.0f;
+    static constexpr float kSeedRootHz = 130.8128f; // C3: a voice at this pitch plays the sample as recorded
 
     void prepare(double sampleRate, const EngineConfig& config = {});
     void reset();
@@ -51,6 +61,9 @@ class Engine {
     void setParams(const Params& params);
     // Sensor gate for voice 0..7.
     void setGate(int voice, bool on);
+
+    // Seed sample for a group (0 = 1234, 1 = 5678), or nullptr. Any thread; lock-free.
+    void setSeed(int group, const SeedSample* sample);
     bool gate(int voice) const { return voices_[static_cast<size_t>(voice)].gate; }
 
     // Mono engine; `right` may be null or equal to `left`.
@@ -134,6 +147,23 @@ class Engine {
     std::array<Smoother, kNumGroups> table_{};
     alignas(16) std::array<float, kNumVoices> wavePhase_{};
     const WavetableBank* bank_ = nullptr;
+
+    // Seed engine: per-voice two-grain clouds over the group's sample.
+    struct Grain {
+        double pos = 0.0; // read position in sample frames
+        int age = 0;
+        bool active = false;
+    };
+    struct SeedVoice {
+        std::array<Grain, 2> grains{};
+        int untilNext = 0;
+        size_t next = 0;
+        Noise rng;
+    };
+    float seedPetal(SeedVoice& sv, const SeedSample& s, float hz, float timbre, float fm);
+    std::array<std::atomic<const SeedSample*>, kNumGroups> seeds_{};
+    std::array<SeedVoice, kNumVoices> seedVoices_; // default-init: Noise's default ctor is explicit
+    int grainLength_ = 4320;                       // output samples (90 ms)
     // Per-voice pitch smoothing, kept as flat arrays so it vectorises.
     alignas(16) std::array<float, kNumVoices> freq_{};
     alignas(16) std::array<float, kNumVoices> freqTarget_{};
