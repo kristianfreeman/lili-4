@@ -116,7 +116,9 @@ WavetableBank::WavetableBank() {
     for (int fam = 0; fam < kFamilies; ++fam) {
         for (int fr = 0; fr < kFrames; ++fr) {
             const double t = static_cast<double>(fr) / (kFrames - 1);
-            float norm = 1.0f; // from level 0, applied to every level so loudness doesn't jump with pitch
+            // RMS-normalised to a unit sine, so family and morph change timbre, not loudness. The factor
+            // comes from level 0 and applies to every level, so loudness doesn't jump with pitch.
+            float norm = 1.0f;
             for (int level = 0; level < kLevels; ++level) {
                 const int maxHarmonic = (kSize / 2) >> level;
                 std::fill(spectrum.begin(), spectrum.end(), Complex(0.0, 0.0));
@@ -131,13 +133,14 @@ WavetableBank::WavetableBank() {
                 }
                 inverseFft(spectrum);
                 float* dst = &data_[static_cast<size_t>(((fam * kFrames + fr) * kLevels + level) * kStride)];
-                float peak = 0.0f;
+                double energy = 0.0;
                 for (int k = 0; k < kSize; ++k) {
                     dst[k] = static_cast<float>(spectrum[static_cast<size_t>(k)].real());
-                    peak = std::max(peak, std::fabs(dst[k]));
+                    energy += static_cast<double>(dst[k]) * dst[k];
                 }
                 if (level == 0) {
-                    norm = peak > 0.0f ? 1.0f / peak : 1.0f;
+                    const double rms = std::sqrt(energy / kSize);
+                    norm = rms > 0.0 ? static_cast<float>(std::sqrt(0.5) / rms) : 1.0f;
                 }
                 for (int k = 0; k < kSize; ++k) {
                     dst[k] *= norm;

@@ -91,7 +91,7 @@ void testHoldDrones() {
     e.setParams(p);
     render(e, 4800);
     const auto s = render(e, 48000);
-    check(s.rms > 1e-3, "hold 1234 drones without gates");
+    check(s.rms > 1e-3, "hold 1·2 drones without gates");
 }
 
 void testVoiceFrequencyTable() {
@@ -297,16 +297,26 @@ void testWavetablePitchAndRange() {
         prev = x;
     }
     check(std::abs(crossings - 220) <= 1, "wavetable runs at 220 Hz (" + std::to_string(crossings) + ")");
-    for (int f = 0; f <= 12; ++f) {
-        for (int m = 0; m <= 8; ++m) {
-            const float fam = static_cast<float>(f) * 0.25f;
-            const float morph = static_cast<float>(m) * 0.125f;
-            for (int i = 0; i < 256; ++i) {
-                peak = std::max(peak, std::fabs(bank.read(fam, morph, static_cast<float>(i) / 256.0f, dt)));
+    // Every family and morph frame sits at the RMS of a unit sine, with a bounded crest.
+    float lowRms = 1e9f;
+    float highRms = 0.0f;
+    for (int f = 0; f < lili::WavetableBank::kFamilies; ++f) {
+        for (int m = 0; m < lili::WavetableBank::kFrames; ++m) {
+            const float morph = static_cast<float>(m) / static_cast<float>(lili::WavetableBank::kFrames - 1);
+            double energy = 0.0;
+            for (int i = 0; i < 1024; ++i) {
+                const float x = bank.read(static_cast<float>(f), morph, static_cast<float>(i) / 1024.0f, dt);
+                energy += static_cast<double>(x) * x;
+                peak = std::max(peak, std::fabs(x));
             }
+            const auto rms = static_cast<float>(std::sqrt(energy / 1024.0));
+            lowRms = std::min(lowRms, rms);
+            highRms = std::max(highRms, rms);
         }
     }
-    check(peak <= 1.05f && peak > 0.5f, "wavetables stay normalised (peak " + std::to_string(peak) + ")");
+    check(lowRms > 0.6f && highRms < 0.8f, "wavetables share one loudness (rms " + std::to_string(lowRms) +
+                                               ".." + std::to_string(highRms) + ")");
+    check(peak < 5.0f, "wavetable crest stays bounded (peak " + std::to_string(peak) + ")");
 }
 
 void testWaveEngine() {

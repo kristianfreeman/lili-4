@@ -17,8 +17,8 @@ constexpr std::array<int, kNumPairs> kPartnerSwitchOn{3, 0, 1, 2};
 
 constexpr float kVoiceMix = 0.16f;
 constexpr float kPulseWidth = 0.53125f;
-constexpr float kWaveGain = 0.6f; // wavetables are peak-normalised; sit near the classic level
-constexpr float kSeedGain = 0.8f; // user samples are rarely at full scale
+constexpr float kWaveGain = 0.82f; // wavetables are RMS-normalised; this matches the classic pulse level
+constexpr float kSeedGain = 0.8f;  // user samples are rarely at full scale
 
 float leak(bool on) { return on ? 1.0f : 0.001f; }
 int groupOf(int voice) { return voice / 4; }
