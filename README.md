@@ -58,15 +58,14 @@ Configure with `-DLILI_COPY_PLUGIN=ON` to install the AU and VST3 into `~/Librar
 | `docs/SPEC.md`        | The signal flow, written out as math                        |
 | `art/`, `tools/art/`  | Board layout, fonts, and the Blender render pipeline        |
 | `plugin/assets/`      | UI art embedded in the plugin                               |
-| `reference/lira-8-pd/`| The LIRA•8 Pure Data patch, used as the reference           |
 
 ## References
 
 - **[SOMA Laboratory Lyra-8](https://somasynths.com/lyra-8/)**: the organismic drone synthesizer by Vlad Kreimer that inspired all of this.
-- **[LIRA•8](https://github.com/MikeMorenoDSP/LIRA-8)** by Mike Moreno: a Pure Data emulation of the Lyra-8. LILI-4's engine began as a native port of it, and the patch is included under `reference/` as the reference implementation.
+- **[LIRA•8](https://github.com/MikeMorenoDSP/LIRA-8)** by Mike Moreno: a Pure Data emulation of the Lyra-8. LILI-4's engine began as a native port of it.
 
 LILI-4 is an independent project and is not affiliated with SOMA Laboratory or Mike Moreno DSP.
 
 ## License
 
-BSD 3-Clause, see [`LICENSE`](LICENSE). The LIRA•8 notice (© Miguel Moreno, BSD) is kept in `LICENSE` and `reference/lira-8-pd/LICENSE.txt`. The fonts in `art/fonts/` are under the SIL Open Font License.
+BSD 3-Clause, see [`LICENSE`](LICENSE). The LIRA•8 notice (© Miguel Moreno, BSD) is kept in `LICENSE`. The fonts in `art/fonts/` are under the SIL Open Font License.

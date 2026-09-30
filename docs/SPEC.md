@@ -1,8 +1,8 @@
 # LILI-4 DSP specification
 
 This is a transcription of the reference Pure Data patch
-(`reference/lira-8-pd`, LIRA•8 by Mike Moreno DSP, upstream commit
-`6a6b6cb`) into plain math. It is the contract the C++ engine in `dsp/`
+([LIRA•8](https://github.com/MikeMorenoDSP/LIRA-8/tree/6a6b6cb) by Mike Moreno
+DSP, upstream commit `6a6b6cb`) into plain math. It is the contract the C++ engine in `dsp/`
 implements. Where the reference does something odd, the oddity is recorded
 under **Quirk** and the native decision under **LILI-4**.
 
@@ -19,8 +19,6 @@ Conventions:
 - `tanhP(x)` = the reference's `ma.tanh~`, the Padé approximation
   `c · (27 + c²) / (27 + 9c²)` with `c = clip(x, −3, 3)`. LILI-4 uses it
   everywhere the reference does, because its knee is audible.
-- To see the flow for yourself, dump any reference patch with
-  `python3 tools/pdview.py reference/lira-8-pd/<file>.pd`.
 
 ## Topology
 
