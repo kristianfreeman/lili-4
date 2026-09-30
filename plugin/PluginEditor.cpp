@@ -31,7 +31,7 @@ LiliEditor::LiliEditor(LiliProcessor& owner) : AudioProcessorEditor(owner), proc
     loadLayout();
     loadGlow();
 
-    // Debug aid for snapshots: LILI_SNAPSHOT_SENSORS=136 latches sensors 1, 3, 6
+    // Debug aid for snapshots: LILI_SNAPSHOT_SENSORS=13 latches petals 1 and 3
     // and mutes the output (telemetry is measured before the volume stage).
     const auto demo = juce::SystemStats::getEnvironmentVariable("LILI_SNAPSHOT_SENSORS", {});
     if (demo.isNotEmpty()) {

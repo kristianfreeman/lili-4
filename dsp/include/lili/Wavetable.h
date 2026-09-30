@@ -1,5 +1,5 @@
 // Procedural "botanical" wavetables for the Wave petal engine.
-// See docs/PLAN-garden.md: four families x 8 morph frames x 2048 samples, each
+// Four families x 8 morph frames x 2048 samples, each
 // frame band-limited per octave (mip levels) so FM can't alias.
 #pragma once
 

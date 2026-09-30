@@ -1,4 +1,4 @@
-"""Detailed control models for the LILI-8 board (knobs, switches, buttons).
+"""Detailed control models for the LILI-4 board (knobs, switches, buttons).
 
 All positions are board px (see render_board.PX); each builder places one part
 centred on (cx, cy) with its base on the board surface (z = 0). `value` is the

@@ -1,11 +1,11 @@
-"""Build the LILI-8 circuit board in Blender from art/board.json and render it.
+"""Build the LILI-4 circuit board in Blender from art/board.json and render it.
 
-    blender -b -P tools/art/render_board.py -- --out build/art/style_frame.png [--lit] [--samples 128] [--scale 2]
+    blender -b -P tools/art/render_board.py -- --out build/art/board.png [--lit] [--samples 128] [--scale 2]
 
 Vintage green look: glossy green solder mask over raised copper, tinned (HASL)
-pads, white silkscreen, blue trimmers and DIP switches, a TO-5 metal can in the
+pads, off-white silkscreen, cream knobs and bat toggles, a TO-5 metal can in the
 flower's centre. `--lit` adds warm emission to the traces named in the JSON's
-"styleFrameLit" block plus a bloom pass, to preview the "playing" state.
+"litPreview" block plus a bloom pass, to preview the "playing" state.
 
 Board px map to millimetres (1 px = 1 mm, y flipped); the camera is an
 orthographic top-down view that frames the board exactly.
@@ -26,7 +26,7 @@ PX = 0.001  # metres per board px
 
 def parse_args():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    args = {"out": "build/art/style_frame.png", "lit": False, "bake": False, "no_knobs": False, "samples": 128,
+    args = {"out": "build/art/board.png", "lit": False, "bake": False, "no_knobs": False, "samples": 128,
             "scale": 2, "tilt": 0.0}
     i = 0
     while i < len(argv):
@@ -304,7 +304,7 @@ BAKE_EXPOSURE_EV = -2.0  # headroom for bright emission in 16-bit PNG layers
 
 def build(scene):
     lit = ARGS["lit"]
-    lit_spec = LAYOUT.get("styleFrameLit", {}) if lit else {}
+    lit_spec = LAYOUT.get("litPreview", {}) if lit else {}
     bake = ARGS["bake"]
     if bake:
         # Everything that can light up is emissive, each in its own light group.
@@ -769,5 +769,5 @@ def main():
     print("WROTE", out)
 
 
-if __name__ == "__main__":  # also imported as a helper library by render_parts.py
+if __name__ == "__main__":  # also imported as a helper library by parts.py and render_sprites.py
     main()

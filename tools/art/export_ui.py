@@ -2,10 +2,10 @@
 
     python3 tools/art/export_ui.py build/art/layers plugin/assets
 
-The first native editor draws with JUCE's software renderer, which loads PNGs
+The editor draws with JUCE's software renderer, which loads PNGs
 as 8-bit, so this bakes the AgX look in: board.png (base, controls removed)
 plus knob_strip.png and toggle_strip.png (straight alpha). The linear 16-bit
-layers stay the source for the later GPU compositor with glow.
+layers stay the source of truth for any re-export.
 """
 
 import json
@@ -43,7 +43,7 @@ def main():
     # Glow deltas: how much each element brightens the *displayed* board at full
     # level, AgX(base + layer) - AgX(base), 8-bit RGB cropped to the layer rect.
     # The editor adds level * delta (a display-space approximation of the
-    # linear sum; the later GPU pass will do it in linear light). Meter LEDs are
+    # linear sum, close at these levels). Meter LEDs are
     # drawn by the editor, so their layers are skipped.
     base_lin = load(os.path.join(layers_dir, manifest["base"]), gain)
     glow_dir = os.path.join(out_dir, "glow")

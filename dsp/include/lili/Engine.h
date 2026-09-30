@@ -1,4 +1,4 @@
-// LILI-8 engine: 8 voices in 4 FM pairs, hyper LFO, dual mod delay, drive.
+// LILI-4 engine: 4 petals of 2 oscillators (FM pairs), LFO pair / Pollinator, dual mod delay, drive.
 // Framework-free; the plugin and the tests drive it directly.
 #pragma once
 
@@ -143,7 +143,7 @@ class Engine {
     bool snapOnNextParams_ = true;
 
     OscBank<kNumVoices> osc_;
-    // Garden engine: per-group petal source (docs/PLAN-garden.md).
+    // Garden engine: per-group petal source (docs/SPEC.md).
     std::array<int, kNumGroups> engine_{};
     std::array<Smoother, kNumGroups> table_{};
     alignas(16) std::array<float, kNumVoices> wavePhase_{};

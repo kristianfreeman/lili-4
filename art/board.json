@@ -102,7 +102,7 @@
     [379, 394, "", [["bee", "BEE", 0]]]
   ],
 
-  "styleFrameLit": {
+  "litPreview": {
     "petals": [0, 3], "meters": [4, 0, 0, 3], "stem": true, "meanders": [0], "leds": [0], "stamenLeds": [0, 1, 2], "xmod": [0]
   }
 }

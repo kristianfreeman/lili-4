@@ -21,8 +21,8 @@ AGX_OUT = np.array([[1.19687900512017, -0.0528968517574562, -0.0529716355144438]
                     [-0.0980208811401368, 1.15190312990417, -0.0980434501171241],
                     [-0.0990297440797205, -0.0989611768448433, 1.15107367264116]])
 MIN_EV, MAX_EV = -12.47393, 4.026069
-# ASC-CDL "look" fitted to Blender's "AgX - Medium High Contrast" on our base
-# render (MSE 0.018 -> 0.0008 against style_frame_v4.png).
+# ASC-CDL "look" fitted to Blender's "AgX - Medium High Contrast" render of the board
+# (MSE 0.018 -> 0.0008).
 LOOK_POWER, LOOK_SAT = 1.40, 1.05
 LUMA = np.array([0.2126, 0.7152, 0.0722])
 

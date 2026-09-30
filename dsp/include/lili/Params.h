@@ -1,7 +1,7 @@
 // Parameter model shared by the engine, the plugin and the tests.
 // Continuous parameters are normalised x in [0, 1]; choices are small integers.
 // LILI-4: four petals of two oscillators each, grouped 1·2 and 3·4
-// (docs/PLAN-lili4.md, docs/SPEC.md).
+// (docs/SPEC.md).
 #pragma once
 
 #include <array>
@@ -47,7 +47,7 @@ struct Params {
     // Latched petal pads (click-to-hold). Hosts OR these with MIDI gates.
     std::array<bool, kNumPetals> latch{};
 
-    // Garden engine (docs/PLAN-garden.md). Defaults are the classic engine.
+    // Garden engine (docs/SPEC.md). Defaults are the classic engine.
     std::array<int, kNumGroups> engine{};  // 0 = classic, 1 = wave, 2 = seed
     std::array<float, kNumGroups> table{}; // wavetable family scan, 0..1 over Stem/Reed/Glass/Moss
     float bloom = 0.0f;                    // generative growth depth (0 = off)

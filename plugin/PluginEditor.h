@@ -26,7 +26,7 @@ class LiliEditor final : public juce::AudioProcessorEditor,
     void mouseDoubleClick(const juce::MouseEvent& e) override;
     void mouseExit(const juce::MouseEvent& e) override;
 
-    // Seed samples: drop an audio file on the left (1234) or right (5678) half.
+    // Seed samples: drop an audio file on the left (1·2) or right (3·4) half.
     bool isInterestedInFileDrag(const juce::StringArray& files) override;
     void fileDragEnter(const juce::StringArray& files, int x, int y) override;
     void fileDragMove(const juce::StringArray& files, int x, int y) override;

@@ -1,10 +1,10 @@
-# LILI-8 DSP specification
+# LILI-4 DSP specification
 
 This is a transcription of the reference Pure Data patch
 (`reference/lira-8-pd`, LIRA•8 by Mike Moreno DSP, upstream commit
 `6a6b6cb`) into plain math. It is the contract the C++ engine in `dsp/`
 implements. Where the reference does something odd, the oddity is recorded
-under **Quirk** and the native decision under **LILI-8**.
+under **Quirk** and the native decision under **LILI-4**.
 
 Conventions:
 
@@ -12,12 +12,12 @@ Conventions:
   reference's 0–127 range. All plugin parameters are stored as `x ∈ [0,1]`
   (or an integer choice).
 - `smooth(·)` = the reference's `[$1 23.22( → line~`, a linear ramp to the new
-  value over 23.22 ms. LILI-8 uses a one-pole smoother with a comparable
+  value over 23.22 ms. LILI-4 uses a one-pole smoother with a comparable
   settling time. The difference is inaudible and it doesn't zipper.
 - `mtof(n) = 440 · 2^((n − 69) / 12)`.
 - `dbtorms(d) = 10^((d − 100) / 20)` for `d > 0`, else 0 (Pd's 100 dB = unity convention).
 - `tanhP(x)` = the reference's `ma.tanh~`, the Padé approximation
-  `c · (27 + c²) / (27 + 9c²)` with `c = clip(x, −3, 3)`. LILI-8 uses it
+  `c · (27 + c²) / (27 + 9c²)` with `c = clip(x, −3, 3)`. LILI-4 uses it
   everywhere the reference does, because its knee is audible.
 - To see the flow for yourself, dump any reference patch with
   `python3 tools/pdview.py reference/lira-8-pd/<file>.pd`.
@@ -95,14 +95,14 @@ if quantize: f_N = mtof(round(ftom(f_N)))
 f_N        = smooth(f_N)
 ```
 
-**LILI-8:** the reference's group Pitch is a continuous 0.01–2.0 multiplier. LILI-8 snaps it to whole semitones (−80 to +12 st). The default x = 64/127 is exactly 0 st, and group transpositions stay in tune with each other. The per-voice Tune knobs stay continuous. The 5 ms frequency smoother turns each step into a short glide.
+**LILI-4:** the reference's group Pitch is a continuous 0.01–2.0 multiplier. LILI-4 snaps it to whole semitones (−80 to +12 st). The default x = 64/127 is exactly 0 st, and group transpositions stay in tune with each other. The per-voice Tune knobs stay continuous. The 5 ms frequency smoother turns each step into a short glide.
 
 ## Pair vibrato
 
 Each pair has a sine LFO. Its rate is picked at random when the plugin loads:
 `rate = 0.5 + 3 · U{0..1000}/1000` Hz (0.5–3.5 Hz). The reference seeds the
 choice from wall-clock ms plus the pair's first voice index, so every instance
-differs. LILI-8 takes a seed in `EngineConfig` so renders can be reproduced.
+differs. LILI-4 takes a seed in `EngineConfig` so renders can be reproduced.
 
 ```
 vib = cos(2π · rate · t) · vibratoSwitch
@@ -186,13 +186,13 @@ sourceSignal = cross · leak(source == 0) + lfo · leak(source == 2)
 ```
 
 **Quirk:** because of the 0.001 leak, Source = OFF still lets −60 dB of
-cross-mod through. **LILI-8:** kept, since it's part of the sound.
+cross-mod through. **LILI-4:** kept, since it's part of the sound.
 
 **Quirk:** in Pd, `s~`/`r~` feedback lags by one 64-sample block whenever the
 receiver runs before the sender in Pd's DSP sort order (0 samples otherwise),
 so the FM paths between pairs, and from total feedback, lag 0 or 64 samples
 depending on sort order.
-**LILI-8:** these loops run with a 1-sample delay by default, which is closer
+**LILI-4:** these loops run with a 1-sample delay by default, which is closer
 to the analog hardware. `EngineConfig::legacyBlockFeedback = true` restores a
 64-sample delay on those paths for A/B comparison against reference renders.
 
@@ -252,7 +252,7 @@ y   = x · g
 gate. It never limits. With `fb > 1/0.777 ≈ 1.29` (`x_feedback ≳ 0.55`) the
 loop gain exceeds 1 and the loop runs away. Pd floats let it grow until only
 the `tanhP` on the wet output hides it, and eventually it reaches inf.
-**LILI-8:** reproduce the curve exactly, and add a transparent safety
+**LILI-4:** reproduce the curve exactly, and add a transparent safety
 saturator on `write_k` (`4 · tanh(x / 4)`). It does nothing below about ±1
 and stops runaway. High feedback still gives the intended hot,
 self-oscillating wash.
@@ -290,7 +290,7 @@ close to ±1, where it sharpens the clipped edges.
 
 ## LILI-4 structure (supersedes the 8-voice layout above)
 
-LILI-4 keeps the reference's 8 oscillators in 4 FM pairs, but presents each pair as one **petal** (`docs/PLAN-lili4.md`):
+LILI-4 keeps the reference's 8 oscillators in 4 FM pairs, but presents each pair as one **petal**:
 
 - **One pad, gate, sensor envelope and thump per petal**, shared by both oscillators. The thump is carried by oscillator A only.
 - **Tuning:**
@@ -308,17 +308,16 @@ Everything else in this document applies per petal where it said per pair.
 ## Garden engine (not in the reference)
 
 Everything here is opt-in. With Engine = Classic, Bloom = 0 and BEE off, the
-engine is bit-identical to the reference port above (tested). See
-`docs/PLAN-garden.md` for the design rationale.
+engine is bit-identical to the reference port above (tested).
 
-**Petal engine per group** (`engine1234`, `engine5678`): Classic / Wave / Seed.
+**Petal engine per group** (`engine12`, `engine34`): Classic / Wave / Seed.
 Pitch, FM (`f_osc = f · (1 + modSig)`), vibrato, the sensor envelope, the thump
 and Hold are shared by all three. Only the waveform source changes, and the
 per-pair **Sharp** becomes "timbre":
 
 - **Classic:** `sq · s − tri · (1 − s)` as above.
-- **Wave:** `0.6 · WT(family, morph = √s, phase)`.
-  - `WavetableBank` has 4 procedural families (Stem, Reed, Glass, Moss), 8 frames × 2048 samples each.
+- **Wave:** `0.82 · WT(family, morph = √s, phase)`.
+  - `WavetableBank` has 4 procedural families (Stem, Reed, Glass, Moss), 8 frames × 2048 samples each, every frame RMS-normalised to a unit sine so it sits at the Classic pulse level.
   - Each frame is band-limited to 11 per-octave mip levels (level `L` keeps harmonics ≤ 1024 ≫ L, chosen so the top harmonic stays below Nyquist for the current phase increment).
   - `table` (0..1) scans the families; frames and families crossfade linearly.
 - **Seed:** a granular read of the group's sample, scaled by 0.8.
@@ -348,10 +347,3 @@ per-pair **Sharp** becomes "timbre":
 - Freq A is flight speed, Freq B is chaos. The leaf LEDs follow sign(x) and sign(y).
 - The state resets if it ever goes non-finite.
 
-## Future (beyond the reference)
-
-- MPE / poly pressure: continuous sensor amount (`l` slews toward the pressure
-  value at the attack/release rates, instead of toward 0/1).
-- Oversampling (2–4×) for the FM oscillators and the distortion stage.
-- Audio input into the delay/distortion section (effect mode).
-- SIMD: the four pairs are uniform, so they can run as 4-wide lanes.

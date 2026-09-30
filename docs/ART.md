@@ -1,53 +1,22 @@
-# LILI-4 art direction and pipeline
+# Art pipeline
 
-The UI is pre-rendered artwork (Blender), composited natively at runtime and
-driven by engine telemetry. There is no web view or JavaScript in the plugin.
+The UI is pre-rendered in Blender (Cycles), then composited natively by the plugin and driven by engine telemetry.
 
-## Pipeline
+## Files
 
 | File | Role |
 |------|------|
-| `art/board.json` | Layout: every path, part and control position in board px (1120×800). Also read by the future native editor for hit areas. |
-| `tools/art/render_board.py` | Builds the board in Cycles from the layout and renders it. `--lit` previews the playing state. |
-| `tools/art/parts.py` | Detailed control models (knobs, toggles, slide switch, tact button). |
-| `tools/art/render_parts.py` | Comparison sheet of control styles (`--tilt`, `--scale`). |
+| `art/board.json` | The layout: every path, part and control position in board px (1120×800). The renderer and the plugin editor both read it, so hit areas match the render exactly. |
+| `art/fonts/` | IBM Plex Mono (silkscreen) and Instrument Serif (logo), both SIL OFL 1.1. |
+| `tools/art/render_board.py` | Builds the board in Blender from the layout and renders it, or bakes the runtime layers. |
+| `tools/art/parts.py` | Control models: knobs, toggles, touch pads. |
+| `tools/art/render_sprites.py` | Renders one control in each of its states, for a sprite strip. |
+| `tools/art/crop_layers.py` | Crops each glow layer to where its light lands. |
+| `tools/art/assemble_strip.py` | Stacks sprite frames into a strip and feathers their edges. |
+| `tools/art/composite.py` | Reference compositor, for previewing any state offline. |
+| `tools/art/export_ui.py` | Exports the display-ready assets in `plugin/assets/`. |
 
-```sh
-blender -b -P tools/art/render_board.py -- --out build/art/board.png [--lit] [--samples 128] [--scale 2]
-blender -b -P tools/art/render_parts.py -- --out build/art/parts.png [--tilt 28] [--scale 4]
-blender -b -P tools/art/render_board.py -- --bake --out build/art/layers    # runtime layers
-python3 tools/art/crop_layers.py build/art/layers --threshold 0.02          # crop to where light lands
-python3 tools/art/composite.py build/art/layers out.png voice0=1 mix=0.8 delay0=0.5   # preview a state
-```
-
-### Layer bake (what the plugin composites)
-
-`--bake` renders once with **Cycles light groups**: every animatable element gets its own light group, and the studio lights and world are in `base`. The single render writes:
-- `base.png`: the resting board.
-- 37 glow layers: `voice0..7` (petal, rib and touch pad), `mix`, `delay0/1`, `xmod0/1`, `totalfb`, `lfo0/1`, `stamens`, `meter{pair}_{led}`. Each layer includes the light it spills onto the board around it.
-- `manifest.json`: the layer list, the encoding and the tone-map parameters.
-
-Layers are **linear light**: sRGB-encoded 16-bit PNG, rendered at −2 EV for headroom. The runtime (and `composite.py`) does:
-
-```
-linear = decode(base) + Σ level_i · decode(layer_i)      # decode = srgb→linear × 4
-out    = sRGB( AgX(bloom(linear)) )                     # AgX minimal approx + look (power 1.40, sat 1.05)
-```
-
-The first bake saved tone-mapped layers, and adding those washed the glow out to cream. Linear layers add physically. The AgX look parameters were fitted against Blender's "Medium High Contrast" render of the same scene (MSE 0.018 → 0.0008), so the composited plugin UI matches the style frames. It takes about 30 s for all 38 layers at 2240×1600.
-
-**Controls: shared sprite strips.** `render_sprites.py` renders one control alone, in each of its states, on a Cycles **shadow catcher** over a transparent film. Each frame is the part plus its real soft shadow as alpha, under the board's own studio lights, so highlights stay put while it moves.
-- **Knob:** 64 frames, value 0 = 7 o'clock to 1 = 5 o'clock. `knob_strip.png` is 128×8192 and takes about 23 s.
-- **Toggle:** 3 frames (lever up, centre, down). `toggle_strip.png`; each frame is 80 px, because the long lever shadow was clipped at 56 px.
-
-`assemble_strip.py` stacks the frames (same linear 16-bit encoding, straight alpha) and registers each strip in the manifest, including how states map to frames and where sprites anchor. The board is baked with `--no-controls`: the base keeps each control's silkscreen (scales, option legends, labels), and the runtime draws every knob and toggle from its strip:
-
-```
-linear = base;  for each control: linear = sprite·α + linear·(1−α)   # knob frame = round(value·63)
-linear += Σ level_i · glow_i;  out = sRGB(AgX(bloom(linear)))
-```
-
-One strip serves all instances (the light direction barely changes across the board): 31 knobs plus 16 toggles in about 4.5 MB as RGBA16F.
+## Rebuilding the assets
 
 ```sh
 blender -b -P tools/art/render_board.py -- --bake --no-controls --out build/art/layers
@@ -56,84 +25,56 @@ blender -b -P tools/art/render_sprites.py -- --part toggle
 python3 tools/art/crop_layers.py build/art/layers --threshold 0.02
 python3 tools/art/assemble_strip.py build/art/knob build/art/layers --name knobStrip
 python3 tools/art/assemble_strip.py build/art/toggle build/art/layers --name toggleStrip
-python3 tools/art/composite.py build/art/layers out.png voice0=1 knob:tune1=0.2 toggle:source12=2
+python3 tools/art/export_ui.py build/art/layers plugin/assets
 ```
 
-**Cropping.** `crop_layers.py` trims each glow layer to where its decoded light exceeds 0.02 (plus 12 px padding) and records `rect` in the manifest. That's 13% of the full-frame area, so GPU memory for the layers (RGBA16F) drops from about 1,061 MB to 141 MB. It's visually lossless: against the uncropped composite the maximum error is 5/255 on 9 pixels. Some voice layers stay wide on purpose: lit traces reflect in glossy parts (U1 can, chrome toggles) across the board.
-
-A 2240×1600 render takes about 12 s on an M4 Max (Metal).
-
-### In the plugin (v1 native editor)
-
-`plugin/PluginEditor.cpp` draws the rendered board with plain JUCE graphics. It lays out every control from `art/board.json`, so hit areas match the render exactly:
-- **Knobs:** drawn from the knob strip at the live parameter value. Vertical drag (Shift for fine), double-click to reset, scroll wheel.
-- **Toggles:** drawn from the toggle strip. Click to throw; on 3-way toggles, clicking above or below the pivot moves the lever one position.
-- **Touch pads:** click to latch that sensor. Sounding voices warm the pad.
-- **Pair LED meters:** follow the engine's telemetry.
-- Host automation moves everything. The window is resizable at a fixed aspect ratio.
-
-v1 assets are display-ready 8-bit PNGs from `export_ui.py` (tone mapping baked in), committed in `plugin/assets/`.
-
-**Software glow (v1).** Instead of a GPU pass, `export_ui.py` pre-computes each glow layer as a **display-space delta**, `AgX(base + layer) − AgX(base)`, how much it brightens the finished image at full level (`plugin/assets/glow/`, 17 layers, 0.34 MB). The editor keeps only the runs of pixels that actually light up; across all layers that's about 141k pixels. Each tick it undoes last frame's glow by copying just those runs back from the pristine board, adds `level × delta` for every lit layer, and repaints only the changed areas.
-- **What drives each layer:**
-  - voices: applied gain
-  - mix: summed pair peaks
-  - delays: delay peaks (dimmer when Delay Mix is 0)
-  - cross-mod arcs: FM depth, when a pair takes its partner as source
-  - total FB: only while the switch is on
-  - leaf LEDs: blink with the real LFO square, and glow steadily above 12 Hz
-  - stamens: output peak
-- **Release:** 150 ms.
-- **Approximation:** adding in display space isn't physically exact where lit layers overlap, but it's close at these levels; the GPU pass can later do it in linear light.
-- **Cost:** in the standalone app, about 12–16% "CPU" with five voices glowing vs about 6–12% idle. The idle figure is mostly the standalone's own audio-device threads waiting in the kernel (the profiler shows the engine and our copies as tiny), so the glow adds roughly 3–5% of a core.
-- **Debug:** `LILI_SNAPSHOT_SENSORS=136` latches sensors 1, 3, 6 and mutes the output, for glow snapshots.
-
-**Hover readouts.** Hovering or dragging a control shows a small amber tag in the embedded IBM Plex Mono.
-- Knobs show musical units:
-  - Tune in Hz, computed by `lili::Engine::voiceFrequency` from the live parameters, so it includes the group Pitch knob and is exactly what plays;
-  - LFO rate in Hz; delay time in ms or s; feedback as loop gain;
-  - Pitch as a × multiplier; the rest as %.
-- Toggles show their current legend (e.g. "SOURCE · LFO"); pads show LATCHED or OFF.
-- `LILI_SNAPSHOT_READOUT=<param id>` shows a tag in snapshots.
-
-The readout exposed a real bug: JUCE's `AudioParameterFloat(id, name, min, max, default)` constructor quantises to **0.01 steps**. Tune moved in about 1.1-semitone jumps, delay time in coarse leaps, and the 64/127 defaults snapped to 0.50. Parameters now use an explicit continuous `NormalisableRange`.
+To preview a state offline:
 
 ```sh
-python3 tools/art/export_ui.py build/art/layers plugin/assets   # after a bake + strips
-LILI_SNAPSHOT=/tmp/ed.png <Standalone app binary>                # editor saves a PNG of itself after ~1 s
+python3 tools/art/composite.py build/art/layers out.png petal0=1 mix=0.8 knob:tune1=0.2
 ```
 
-**Sprite edges.** The low key light throws long, soft shadows, and the world light adds a faint broad occlusion, so a sprite's alpha never quite reaches zero. Sprites are rendered large (knob 96 px, toggle 128 px), and `assemble_strip.py` feathers the outer 12% of each frame to alpha 0, so they never leave a rectangular seam.
+A 2240×1600 bake takes about 30 s on an M-series Mac (Metal).
 
-**Pillow gotcha.** Pillow reads 16-bit PNGs as 8-bit. The layer tools check the value range instead of assuming 16-bit, but `crop_layers.py` and `assemble_strip.py` currently re-save at 8 bits. This is fine for sRGB-encoded sprites; the GPU pass should load glow layers with a 16-bit-capable reader.
+## How it works
 
-## Decisions
+**Layer bake.** One render uses Cycles light groups: every element that can light up gets its own group, and the studio lights sit in `base`. The layers are:
+- the resting board;
+- one glow layer each for the petals, mix, echo lines, cross-mod arcs, total feedback, LFO LEDs, stamens and each meter LED, including the light each spills onto the board.
 
-- **Vintage green board.** Mottled glossy green solder mask over raised copper, HASL (tinned) pads, off-white silkscreen.
-- **Vintage cream knobs.** A fluted cap on a wide skirt, with a printed index and a silkscreen scale (11 ticks over 270°). Chosen over refined trimmers, fluted black and machined aluminium (see `render_parts.py`). The knob is about 1.5× the old trimmer's footprint, so it reads at plugin size.
-- **Bat toggles replace jumpers and DIP switches.** 3-position toggles for Source (up = partner pair, centre = off, down = LFO/FB) and the delay Mod Source; 2-position toggles for Fast, Wave, LFO logic and the global switches. Option 0 is always "up". The lever leans 34° so its throw reads from straight above.
-- **Touch pads are interdigitated gold (ENIG) combs.** They're two electrodes your finger bridges, the way the Lyra's touch plates work. Each comb has its spine on one half-ring and fingers at a 4 px pitch. They read as sensors, not as flat grey discs (`parts.touch_pad`, `"pad": "comb"`).
-- **Type: IBM Plex Mono Medium** for silkscreen, **Instrument Serif** for the logo. Both are SIL OFL 1.1, vendored in `art/fonts/` with their licence texts, so they're safe to bake into shipped artwork.
-- **Pair level meters.** Each pair module's second row has a 5-LED SMD meter (4 amber plus 1 pink "hot") between Source and Speed. It fills the dead space with something functional; at runtime it's driven by that pair's telemetry `pairPeak`. Emission uses deep hues, because AgX desaturates small bright emitters toward cream; the final tint can be adjusted in the compositor.
-- **Top-down orthographic camera, kept after a test.** A 15° tilt (`render_board.py --tilt 15`) gives the knobs a little volume and the toggle levers read slightly better. But the gain is modest, and it foreshortens and shifts the board framing and makes hit-testing non-trivial. The larger cream knobs and 34° toggle levers already read from straight above.
-- **Glow is amber, modest.** Emission above about 3 clips to white under AgX.
+Layers are linear light, stored as sRGB-encoded 16-bit PNGs rendered at −2 EV for headroom, and composited as:
 
-## Open items
+```
+linear = decode(base) + Σ level_i · decode(layer_i)
+out    = sRGB(AgX(bloom(linear)))
+```
 
-- Optional GPU pass (OpenGL): linear-light glow sum plus real bloom. The software glow covers the look for now.
+The AgX look (power 1.40, saturation 1.05) is fitted to Blender's own render of the same scene.
 
-## Log
+**Controls.** Each control type is rendered alone on a shadow catcher, so every frame carries the part plus its real soft shadow as alpha, under the board's lighting. Knobs have 64 frames (7 o'clock to 5 o'clock) and toggles have 3. One strip serves every instance. The board itself is baked without controls, and the editor draws each knob and toggle from its strip at the live parameter value.
 
-- **Style frame v1:** placeholder primitives, blue trimmers, DIPs, jumpers.
-- **Parts sheet:** four knob styles and three switch styles compared.
-- **Style frame v2:** cream knobs, bat toggles, headings and bottom row re-spaced so scales don't collide.
-- **Style frame v3:** gold interdigitated touch pads.
-- **Style frame v4:** OFL type (Plex Mono and Instrument Serif) replaces Apple system fonts.
-- **Lit preview v5:** a sounding voice also lights its touch pad (the combs glow amber along with the petal), so the "touched" sensor reads at a glance. In the runtime bake this becomes one more lit layer per voice.
-- **v6:** pair level meters (lit preview shows pairs 12, 34 and 56 playing).
-- **Tilt test:** 15° vs top-down compared (`build/art/tilt_compare.png`); stayed top-down.
-- **Layer bake:** light-group bake, linear encoding, reference compositor with fitted AgX look (`build/art/composite_play.png`).
-- **Native editor v1:** rendered board, knob and toggle sprites bound to parameters, mouse control, pad warmth, LED meters. pluginval passes at strictness 10 including its GUI tests; sprite seams fixed by feathering.
-- **Software glow:** display-space glow deltas driven by telemetry, run-length pixel updates, dirty-rect repaints; meter thresholds rescaled so "hot" means both voices loud (`build/art/editor_glow.png`).
-- **Garden controls:** each group module gains an ENGINE 3-way toggle (CLASSIC/WAVE/SEED) and a TABLE knob in its empty right half; BLOOM, DRIFT and the BEE toggle sit above the flower, between S2 and S5. Drag-and-drop outlines the target half in amber. No editor code changed for layout: it all comes from `board.json`. Debug: `LILI_SNAPSHOT_SEED=<wav>` loads a sample into group 5678 (`build/art/editor_garden.png`).
-- **LILI-4:** four petals fanning up from U1 on a long stem (lily in side view, unlike the Lyra's row of plates); petal modules TUNE/SPREAD/TIMBRE/MOD; Lyra vocabulary renamed (Hyper LFO → LFO A/B, dual mod delay → ECHO, Sharp → TIMBRE); logo LILI-4, "A GARDEN DRONE · REV B". Glow layers are `petal0..3`; `export_ui.py` now clears stale glow files (`build/art/editor_lili4.png`).
+**Glow in the plugin.** `export_ui.py` turns each glow layer into a display-space delta, `AgX(base + layer) − AgX(base)`. The editor keeps only the pixel runs that actually light up. Each frame it restores last frame's runs from the clean board, adds `level × delta` for every lit layer, and repaints only the changed areas. Layer levels follow the telemetry:
+
+| Layer | Driven by |
+|-------|-----------|
+| Petals | voice gain |
+| Mix | summed petal peaks |
+| Echo lines | delay peaks |
+| Cross-mod arcs | FM depth, when a petal takes its partner as source |
+| Total FB | its loop level, while the switch is on |
+| Leaf LEDs | the LFO square wave |
+| Stamens | output peak |
+
+Glow releases over 150 ms.
+
+## Snapshots
+
+The editor has environment hooks for rendering documentation images from the standalone app:
+
+| Variable | Effect |
+|----------|--------|
+| `LILI_SNAPSHOT=/path/out.png` | Saves the editor as a PNG about 1 s after it opens. |
+| `LILI_SNAPSHOT_SENSORS=13` | Latches petals 1 and 3, and mutes the output. |
+| `LILI_SNAPSHOT_PARAMS="hold12=1,bloom=0.5"` | Sets normalised parameter values. |
+| `LILI_SNAPSHOT_READOUT=tune1` | Shows that control's hover readout. |
+| `LILI_SNAPSHOT_SEED=/path.wav` | Loads a Seed sample into group 3·4. |

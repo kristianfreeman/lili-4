@@ -44,7 +44,7 @@ class LiliProcessor final : public juce::AudioProcessor {
     lili::Telemetry takeTelemetry();
 
     // Message thread: load an audio file as the Seed sample for a group
-    // (0 = 1234, 1 = 5678). Returns false if it can't be read.
+    // (0 = 1·2, 1 = 3·4). Returns false if it can't be read.
     bool loadSeed(int group, const juce::File& file);
     juce::String seedName(int group) const;
     juce::AudioFormatManager& formats() { return formats_; }
