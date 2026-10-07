@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(LILI8 VERSION 0.1.0 LANGUAGES C CXX)
+project(LILI8 VERSION 0.1.1 LANGUAGES C CXX)
 
 option(LILI_BUILD_PLUGIN "Build the JUCE plugin (AU/VST3/Standalone)" ON)
 option(LILI_BUILD_TESTS "Build the engine tests and render tool" ON)

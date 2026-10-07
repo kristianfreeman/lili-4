@@ -100,6 +100,9 @@ class LiliEditor final : public juce::AudioProcessorEditor,
     std::vector<juce::Point<float>> meters_; // centre of each pair's 5-LED meter, board px
     float meterPitch_ = 10.0f;
     std::array<juce::Rectangle<float>, 2> seedBoxes_; // GROUP 1·2 / 3·4 frames, board px (drop targets)
+    std::vector<juce::Rectangle<float>>
+        titleBands_;            // each section's top edge + title tab: readouts avoid them
+    float labelOffset_ = 32.0f; // control centre to its silkscreen label, board px
     lili::Telemetry telemetry_;
     std::vector<float> lastValues_;
     bool metersWereLit_ = false;

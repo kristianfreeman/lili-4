@@ -136,8 +136,11 @@ void LiliEditor::loadLayout() {
         meters_.push_back({num(m[0]), num(m[1])});
     }
     meterPitch_ = num(layout.getProperty("meterPitch", 10.0));
+    labelOffset_ = num(layout.getProperty("labelOffset", 32.0));
     for (const auto& b : *layout["boxes"].getArray()) { // [x, y, w, h, title]
         const auto title = b[4].toString();
+        titleBands_.push_back(
+            rect(b).withHeight(1.0f).expanded(0.0f, 10.0f)); // the tab straddles the top edge
         if (title.startsWith("GROUP")) {
             seedBoxes_[title.endsWith("4") ? 1 : 0] = rect(b);
         }
@@ -406,8 +409,9 @@ juce::String LiliEditor::readoutText(const Control& c) const {
             }
             const float hz =
                 lili::Engine::voiceFrequency(p, 2 * (id.getTrailingIntValue() - 1)); // oscillator A
-            value = hz < 1000.0f ? juce::String(hz, hz < 100.0f ? 1 : 0) + " Hz"
-                                 : juce::String(hz / 1000.0f, 2) + " kHz";
+            value = hz < 1000.0f
+                        ? (hz < 100.0f ? juce::String(hz, 1) : juce::String(juce::roundToInt(hz))) + " Hz"
+                        : juce::String(hz / 1000.0f, 2) + " kHz";
         } else if (id.startsWith("spread")) {
             const float st = lili::Engine::spreadSemitones(v);
             const juce::String sign = st >= 0.0f ? "+" : "";
@@ -441,8 +445,9 @@ juce::String LiliEditor::readoutText(const Control& c) const {
                                     : "~" + juce::String(juce::roundToInt(period)) + " s";
         } else if (id.startsWith("delTime")) {
             const float ms = 1.45125f * std::exp2(12.0f * v);
-            value = ms < 1000.0f ? juce::String(ms, ms < 10.0f ? 1 : 0) + " ms"
-                                 : juce::String(ms / 1000.0f, 2) + " s";
+            value = ms < 1000.0f
+                        ? (ms < 10.0f ? juce::String(ms, 1) : juce::String(juce::roundToInt(ms))) + " ms"
+                        : juce::String(ms / 1000.0f, 2) + " s";
         } else if (id == "delFeedback") {
             value = juce::String(v * std::exp2(2.0f * v), 2);
         } else {
@@ -476,6 +481,14 @@ juce::Rectangle<float> LiliEditor::readoutArea(const Control& c) const {
     } else {
         const float above = c.kind == Kind::Knob ? 30.0f : 26.0f;
         area = area.withCentre(c.centre.translated(0.0f, -above - 10.0f));
+        // Top-row controls sit just under their section's title tab: show the value over the
+        // control's own label instead (the readout names the control anyway).
+        for (const auto& band : titleBands_) {
+            if (area.intersects(band)) {
+                area = area.withCentre(c.centre.translated(0.0f, labelOffset_));
+                break;
+            }
+        }
     }
     // Keep it on the board (controls near the edges).
     return area.constrainedWithin(juce::Rectangle<float>(kBoardW, kBoardH).reduced(4.0f));
