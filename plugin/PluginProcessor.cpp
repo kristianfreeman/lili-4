@@ -13,7 +13,7 @@ juce::String toJuce(std::string_view s) { return juce::String(s.data(), s.size()
 juce::AudioProcessorValueTreeState::ParameterLayout LiliProcessor::createLayout() {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
     for (const auto& info : lili::kParamInfo) {
-        const juce::ParameterID id{toJuce(info.id), 1};
+        const juce::ParameterID id{toJuce(info.id), info.version};
         const auto name = toJuce(info.name);
         switch (info.kind) {
         case lili::ParamKind::Continuous:
@@ -126,6 +126,7 @@ void LiliProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuf
 
     const int numSamples = buffer.getNumSamples();
     float* left = buffer.getWritePointer(0);
+    // A mono bus (right == nullptr) always gets the mono engine, whatever "stereo" says.
     float* right = buffer.getNumChannels() > 1 ? buffer.getWritePointer(1) : nullptr;
 
     // Split the block at MIDI events for sample-accurate sensor gates.
@@ -210,6 +211,16 @@ void LiliProcessor::setStateInformation(const void* data, int sizeInBytes) {
                 }
             }
             state_.replaceState(tree);
+            // A state saved before a parameter existed (e.g. "stereo") gets that parameter's
+            // default, not whatever this instance happened to be set to.
+            for (const auto& info : lili::kParamInfo) {
+                const auto id = toJuce(info.id);
+                if (!tree.getChildWithProperty("id", id).isValid()) {
+                    if (auto* param = state_.getParameter(id)) {
+                        param->setValueNotifyingHost(param->getDefaultValue());
+                    }
+                }
+            }
         }
     }
 }

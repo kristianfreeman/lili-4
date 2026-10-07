@@ -4,11 +4,11 @@
 
 namespace {
 
-constexpr float kBoardW = 1120.0f;
-constexpr float kBoardH = 800.0f;
-constexpr float kPadRadius = 20.0f;
-constexpr float kKnobRadius = 18.0f;   // grab radius around a knob centre, board px
-constexpr float kToggleRadius = 16.0f; // grab radius around a toggle pivot
+constexpr float kBoardW = 1000.0f; // art/board.json "size"
+constexpr float kBoardH = 424.0f;
+constexpr float kPadRadius = 18.0f;
+constexpr float kKnobRadius = 16.0f;   // grab radius around a knob centre, board px
+constexpr float kToggleRadius = 14.0f; // grab radius around a toggle pivot
 constexpr float kDragRange = 240.0f;   // board px of vertical drag for the full range
 
 const juce::Colour kAmber{0xffffa640};
@@ -18,18 +18,28 @@ juce::Image loadImage(const void* data, int size) { return juce::ImageCache::get
 
 float num(const juce::var& v) { return static_cast<float>(static_cast<double>(v)); }
 
+juce::Rectangle<float> rect(const juce::var& v) { return {num(v[0]), num(v[1]), num(v[2]), num(v[3])}; }
+
+// The readout name: an entry's optional long name at `index`, else its silkscreen word.
+juce::String nameOf(const juce::var& entry, int index, int labelIndex) {
+    return entry.size() > index ? entry[index].toString() : entry[labelIndex].toString();
+}
+
 } // namespace
 
 LiliEditor::LiliEditor(LiliProcessor& owner) : AudioProcessorEditor(owner), processor_(owner) {
     board_ = loadImage(LiliAssets::board_png, LiliAssets::board_pngSize);
     knobStrip_ = loadImage(LiliAssets::knob_strip_png, LiliAssets::knob_strip_pngSize);
     toggleStrip_ = loadImage(LiliAssets::toggle_strip_png, LiliAssets::toggle_strip_pngSize);
+    outModeStrip_ = loadImage(LiliAssets::outmode_strip_png, LiliAssets::outmode_strip_pngSize);
     mono_ = juce::Font(juce::FontOptions(juce::Typeface::createSystemTypefaceFor(
         LiliAssets::IBMPlexMonoMedium_ttf, LiliAssets::IBMPlexMonoMedium_ttfSize)));
     pristine_ = board_.convertedToFormat(juce::Image::ARGB);
     frame_ = pristine_.createCopy();
     loadLayout();
     loadGlow();
+    applyOutMode();
+    snapshotPath_ = juce::SystemStats::getEnvironmentVariable("LILI_SNAPSHOT", {});
 
     // Debug aid for snapshots: LILI_SNAPSHOT_SENSORS=13 latches petals 1 and 3
     // and mutes the output (telemetry is measured before the volume stage).
@@ -64,7 +74,7 @@ LiliEditor::LiliEditor(LiliProcessor& owner) : AudioProcessorEditor(owner), proc
     }
 
     setResizable(true, true);
-    setResizeLimits(784, 560, 1680, 1200);
+    setResizeLimits(700, 297, 2000, 848);
     if (auto* constrainer = getConstrainer()) {
         constrainer->setFixedAspectRatio(static_cast<double>(kBoardW / kBoardH));
     }
@@ -80,50 +90,62 @@ void LiliEditor::loadLayout() {
     auto& state = processor_.state();
     const auto param = [&state](const juce::var& id) { return state.getParameter(id.toString()); };
 
-    for (const auto& k : *layout["knobs"].getArray()) {
+    const auto strings = [](const juce::var& list) {
+        juce::StringArray out;
+        for (const auto& o : *list.getArray()) {
+            out.add(o.toString());
+        }
+        return out;
+    };
+    // Coordinates are control centres in board px; see art/board.json.
+    for (const auto& k : *layout["knobs"].getArray()) { // [id, x, y, label, value, (name)]
         if (auto* p = param(k[0])) {
-            controls_.push_back(
-                {Kind::Knob, p, {num(k[1]) + 26.0f, num(k[2]) + 17.0f}, false, k[3].toString(), {}});
+            controls_.push_back({Kind::Knob, p, {num(k[1]), num(k[2])}, false, nameOf(k, 5, 3), {}, {}});
         }
     }
-    for (const auto& j : *layout["jumpers"].getArray()) {
+    for (const auto& j : *layout["jumpers"].getArray()) { // [id, x, y, label, options, sel, (name)]
         if (auto* p = param(j[0])) {
-            juce::StringArray options;
-            for (const auto& o : *j[4].getArray()) {
-                options.add(o.toString());
-            }
+            const auto options = strings(j[4]);
             // Choice option 0 is "up": normalised 0.0 is up.
-            controls_.push_back({options.size() == 3 ? Kind::Toggle3 : Kind::Toggle2,
-                                 p,
-                                 {num(j[1]) + 16.0f, num(j[2]) + 38.0f},
-                                 false,
-                                 j[3].toString(),
-                                 options});
+            const auto kind = options.size() == 3 ? Kind::Toggle3 : Kind::Toggle2;
+            controls_.push_back({kind, p, {num(j[1]), num(j[2])}, false, nameOf(j, 6, 3), options, {}});
         }
     }
-    for (const auto& d : *layout["dips"].getArray()) {
-        const auto& items = *d[3].getArray();
-        for (int i = 0; i < items.size(); ++i) {
-            if (auto* p = param(items[i][0])) {
-                // On/off switches: "on" (1.0) is up.
-                controls_.push_back({Kind::Toggle2,
-                                     p,
-                                     {num(d[0]) + 16.0f + 38.0f * static_cast<float>(i), num(d[1]) + 38.0f},
-                                     true,
-                                     items[i][1].toString(),
-                                     {}});
-            }
+    for (const auto& d : *layout["dips"].getArray()) { // [id, x, y, label, legends, on, (name)]
+        if (auto* p = param(d[0])) {
+            // On/off switches: "on" (1.0) is up; legends, if any, read top to bottom.
+            controls_.push_back(
+                {Kind::Toggle2, p, {num(d[1]), num(d[2])}, true, nameOf(d, 6, 3), strings(d[4]), {}});
         }
     }
-    const auto& pads = *layout["pads"].getArray();
+    const auto& pads = *layout["pads"].getArray(); // [x, y, name]; pad i plays petal i
     for (int i = 0; i < pads.size(); ++i) {
         if (auto* p = param("sensor" + juce::String(i + 1))) {
             controls_.push_back(
-                {Kind::Pad, p, {num(pads[i][0]), num(pads[i][1])}, false, "S" + juce::String(i + 1), {}});
+                {Kind::Pad, p, {num(pads[i][0]), num(pads[i][1])}, false, pads[i][2].toString(), {}, {}});
         }
+    }
+    const auto& om = layout["outMode"];
+    outModePatch_ = rect(om["patch"]);
+    if (auto* p = param(om["id"])) {
+        const auto hit = rect(om["hit"]);
+        controls_.push_back(
+            {Kind::OutMode, p, hit.getCentre(), true, om["name"].toString(), strings(om["texts"]), hit});
     }
     for (const auto& m : *layout["meters"].getArray()) {
         meters_.push_back({num(m[0]), num(m[1])});
+    }
+    meterPitch_ = num(layout.getProperty("meterPitch", 10.0));
+    for (const auto& b : *layout["boxes"].getArray()) { // [x, y, w, h, title]
+        const auto title = b[4].toString();
+        if (title.startsWith("GROUP")) {
+            seedBoxes_[title.endsWith("4") ? 1 : 0] = rect(b);
+        }
+    }
+    for (auto& c : controls_) {
+        if (c.kind == Kind::OutMode) {
+            outMode_ = &c; // controls_ is complete: pointers into it stay valid
+        }
     }
     lastValues_.assign(controls_.size(), -1.0f);
 }
@@ -211,7 +233,7 @@ float LiliEditor::glowTarget(const juce::String& name) {
         return paramValue("totalFb") >= 0.5f ? clamp01(t.totalFbPeak * 2.0f) : 0.0f;
     }
     if (name.startsWith("lfo")) {
-        // The leaf LEDs blink with the real LFO squares; too fast to blink -> steady glow.
+        // The LFO LEDs blink with the real LFO squares; too fast to blink -> steady glow.
         const bool b = name.endsWith("1");
         const float hz = b ? t.lfoHzB : t.lfoHzA;
         const float phase = b ? t.lfoPhaseB : t.lfoPhaseA;
@@ -283,6 +305,7 @@ int LiliEditor::frameFor(const Control& c) const {
     case Kind::Toggle3: return juce::jlimit(0, 2, juce::roundToInt(v * 2.0f));
     case Kind::Toggle2: return ((v >= 0.5f) == c.upIsHigh) ? 0 : 2;
     case Kind::Pad: return 0;
+    case Kind::OutMode: return v >= 0.5f ? 1 : 0;
     }
     return 0;
 }
@@ -310,20 +333,23 @@ void LiliEditor::paint(juce::Graphics& g) {
                 break;
             }
             const auto colour = j == kSteps.size() - 1 ? kHot : kAmber;
-            const auto centre =
-                (meters_[k] + juce::Point<float>((static_cast<float>(j) - 2.0f) * 12.0f, 0.0f)) * scale_;
-            g.setColour(colour.withAlpha(0.35f));
-            g.fillEllipse(juce::Rectangle<float>(14.0f * scale_, 14.0f * scale_).withCentre(centre));
+            const float dx = (static_cast<float>(j) - 2.0f) * meterPitch_;
+            const auto centre = (meters_[k] + juce::Point<float>(dx, 0.0f)) * scale_;
+            // Bloom: the LED lights the board around it.
+            const float r = 9.0f * scale_;
+            g.setGradientFill(juce::ColourGradient(colour.withAlpha(0.55f), centre, colour.withAlpha(0.0f),
+                                                   centre.translated(r, 0.0f), true));
+            g.fillEllipse(juce::Rectangle<float>(2.0f * r, 2.0f * r).withCentre(centre));
             g.setColour(colour);
-            g.fillRoundedRectangle(juce::Rectangle<float>(5.2f * scale_, 6.4f * scale_).withCentre(centre),
-                                   1.2f * scale_);
+            g.fillRoundedRectangle(juce::Rectangle<float>(5.4f * scale_, 4.2f * scale_).withCentre(centre),
+                                   1.0f * scale_);
         }
     }
 
     for (const auto& c : controls_) {
         if (c.kind == Kind::Knob) {
             drawSprite(g, knobStrip_, knobStrip_.getHeight() / knobStrip_.getWidth(), frameFor(c), c.centre);
-        } else if (c.kind != Kind::Pad) {
+        } else if (c.kind == Kind::Toggle2 || c.kind == Kind::Toggle3) {
             drawSprite(g, toggleStrip_, 3, frameFor(c), c.centre);
         }
     }
@@ -337,8 +363,14 @@ void LiliEditor::paint(juce::Graphics& g) {
         g.setColour(kAmber);
         g.drawRoundedRectangle(area, 12.0f * scale_, 2.0f * scale_);
         g.setFont(mono_.withHeight(14.0f * scale_));
-        g.drawText(dropGroup_ == 0 ? "SEED 1·2" : "SEED 3·4", area.withTrimmedTop(area.getHeight() * 0.45f),
-                   juce::Justification::centredTop, false);
+        // Between the petal row and the group row.
+        g.drawText(juce::String::fromUTF8(dropGroup_ == 0 ? "SEED 1\xc2\xb7"
+                                                            "2"
+                                                          : "SEED 3\xc2\xb7"
+                                                            "4"),
+                   area.withTrimmedTop(area.getHeight() * 0.45f), juce::Justification::centredTop, false);
+        // and the group the sample will play in
+        g.drawRect(seedBoxes_[static_cast<size_t>(dropGroup_)] * scale_, 2.0f * scale_);
     }
 
     // Value tag for the hovered or dragged control, in the silkscreen face.
@@ -416,8 +448,11 @@ juce::String LiliEditor::readoutText(const Control& c) const {
         } else {
             value = juce::String(juce::roundToInt(v * 100.0f)) + "%";
         }
+    } else if (c.kind == Kind::OutMode) {
+        value = v >= 0.5f ? "STEREO" : "MONO";
     } else if (!c.options.isEmpty()) {
-        const int index = c.kind == Kind::Toggle3 ? juce::roundToInt(v * 2.0f) : juce::roundToInt(v);
+        // Legends read top to bottom: the position the lever is thrown to.
+        const int index = c.kind == Kind::Toggle3 ? juce::roundToInt(v * 2.0f) : (frameFor(c) == 0 ? 0 : 1);
         value = c.options[juce::jlimit(0, c.options.size() - 1, index)];
         if (id.startsWith("engine") && index == lili::PetalSeed) {
             const auto name = processor_.seedName(id == "engine12" ? 0 : 1);
@@ -434,8 +469,63 @@ juce::String LiliEditor::readoutText(const Control& c) const {
 juce::Rectangle<float> LiliEditor::readoutArea(const Control& c) const {
     const auto text = readoutText(c);
     const float w = juce::GlyphArrangement::getStringWidth(mono_.withHeight(11.0f), text) + 16.0f;
-    const float above = c.kind == Kind::Knob ? 34.0f : c.kind == Kind::Pad ? 28.0f : 30.0f;
-    return juce::Rectangle<float>(w, 20.0f).withCentre(c.centre.translated(0.0f, -above - 10.0f));
+    auto area = juce::Rectangle<float>(w, 20.0f);
+    if (c.kind == Kind::OutMode) {
+        // At the board's top edge: show it to the left of the label.
+        area = area.withCentre({c.hit.getX() - w * 0.5f - 6.0f, c.hit.getCentreY()});
+    } else {
+        const float above = c.kind == Kind::Knob ? 30.0f : 26.0f;
+        area = area.withCentre(c.centre.translated(0.0f, -above - 10.0f));
+    }
+    // Keep it on the board (controls near the edges).
+    return area.constrainedWithin(juce::Rectangle<float>(kBoardW, kBoardH).reduced(4.0f));
+}
+
+juce::Rectangle<float> LiliEditor::spriteArea(const Control& c) const {
+    if (c.kind == Kind::OutMode) {
+        return outModePatch_.expanded(2.0f);
+    }
+    return juce::Rectangle<float>(130.0f, 130.0f).withCentre(c.centre); // sprite + shadow
+}
+
+void LiliEditor::applyOutMode() {
+    if (!outModeStrip_.isValid()) {
+        return;
+    }
+    const int frame = outMode_ != nullptr ? frameFor(*outMode_) : 0; // mono until "stereo" exists
+    if (frame == outModeFrame_) {
+        return;
+    }
+    outModeFrame_ = frame;
+    // Silkscreen is part of the board, under the glow: put the patch into the clean board, then
+    // rebuild frame_ from it (every lit layer is re-added on the next updateGlow).
+    const int fw = outModeStrip_.getWidth();
+    const int fh = outModeStrip_.getHeight() / 2;
+    const auto d = (outModePatch_ * 2.0f).toNearestInt(); // board images are 2x board px
+    {
+        juce::Graphics g(pristine_);
+        const int x = d.getX(), y = d.getY(), w = d.getWidth(), h = d.getHeight();
+        g.drawImage(board_, x, y, w, h, x, y, w, h);
+        g.drawImage(outModeStrip_, x, y, w, h, 0, frame * fh, fw, fh);
+    }
+    frame_ = pristine_.createCopy();
+    for (auto& layer : glow_) {
+        layer.drawn = 0.0f;
+    }
+    repaintBoardArea(outModePatch_);
+}
+
+void LiliEditor::parentHierarchyChanged() {
+    if (snapshotPath_.isNotEmpty()) {
+        hideForSnapshot();
+    }
+}
+
+void LiliEditor::hideForSnapshot() {
+    // The standalone window would flash up on the user's screen: keep it fully transparent.
+    if (auto* top = getTopLevelComponent(); top != this && top->getAlpha() > 0.0f) {
+        top->setAlpha(0.0f);
+    }
 }
 
 void LiliEditor::setReadout(Control* c) {
@@ -454,15 +544,21 @@ void LiliEditor::setReadout(Control* c) {
 void LiliEditor::timerCallback() {
     telemetry_ = processor_.takeTelemetry();
 
-    // Debug aid: LILI_SNAPSHOT=/path/out.png saves the editor once, ~1 s after opening.
-    if (snapshotCountdown_ > 0 && --snapshotCountdown_ == 0) {
-        const auto path = juce::SystemStats::getEnvironmentVariable("LILI_SNAPSHOT", {});
-        if (path.isNotEmpty()) {
-            juce::File file(path);
-            file.deleteFile();
+    // Debug aid: LILI_SNAPSHOT=/path/out.png renders the editor offscreen ~1 s after opening, saves
+    // it and quits the standalone app; its window stays invisible throughout.
+    if (snapshotPath_.isNotEmpty()) {
+        hideForSnapshot();
+    }
+    if (snapshotCountdown_ > 0 && --snapshotCountdown_ == 0 && snapshotPath_.isNotEmpty()) {
+        juce::File file(snapshotPath_);
+        file.deleteFile();
+        {
             juce::FileOutputStream out(file);
-            juce::PNGImageFormat().writeImageToStream(createComponentSnapshot(getLocalBounds(), true, 2.0f),
-                                                      out);
+            const auto image = createComponentSnapshot(getLocalBounds(), true, 2.0f);
+            juce::PNGImageFormat().writeImageToStream(image, out);
+        }
+        if (juce::JUCEApplicationBase::isStandaloneApp()) {
+            juce::JUCEApplicationBase::quit();
         }
     }
     // Repaint only what changed.
@@ -470,8 +566,10 @@ void LiliEditor::timerCallback() {
         const float v = controls_[i].param->getValue();
         if (!juce::exactlyEqual(v, lastValues_[i])) {
             lastValues_[i] = v;
-            repaintBoardArea(
-                juce::Rectangle<float>(130.0f, 130.0f).withCentre(controls_[i].centre)); // sprite + shadow
+            if (&controls_[i] == outMode_) {
+                applyOutMode();
+            }
+            repaintBoardArea(spriteArea(controls_[i]));
             if (&controls_[i] == readout_) {
                 // the tag's text (and width) changed too, e.g. from automation
                 repaintBoardArea(readoutArea(controls_[i]).withSizeKeepingCentre(260.0f, 24.0f));
@@ -488,7 +586,7 @@ void LiliEditor::timerCallback() {
     }
     if (metersLit || metersWereLit_) {
         for (const auto& m : meters_) {
-            repaintBoardArea(juce::Rectangle<float>(76.0f, 20.0f).withCentre(m));
+            repaintBoardArea(juce::Rectangle<float>(5.0f * meterPitch_ + 12.0f, 16.0f).withCentre(m));
         }
     }
     metersWereLit_ = metersLit;
@@ -496,6 +594,12 @@ void LiliEditor::timerCallback() {
 
 LiliEditor::Control* LiliEditor::controlAt(juce::Point<float> boardPos) {
     for (auto& c : controls_) {
+        if (c.kind == Kind::OutMode) {
+            if (c.hit.contains(boardPos)) {
+                return &c;
+            }
+            continue;
+        }
         const float radius = c.kind == Kind::Knob  ? kKnobRadius
                              : c.kind == Kind::Pad ? kPadRadius
                                                    : kToggleRadius;
@@ -555,12 +659,15 @@ void LiliEditor::filesDropped(const juce::StringArray& files, int x, int /*y*/) 
 }
 
 void LiliEditor::mouseExit(const juce::MouseEvent& /*e*/) {
-    if (dragging_ == nullptr) {
+    if (dragging_ == nullptr && snapshotPath_.isEmpty()) { // a snapshot keeps LILI_SNAPSHOT_READOUT
         setReadout(nullptr);
     }
 }
 
 void LiliEditor::mouseMove(const juce::MouseEvent& e) {
+    if (snapshotPath_.isNotEmpty()) {
+        return; // the (invisible) snapshot window ignores the pointer
+    }
     auto* c = controlAt(toBoard(e.position));
     setReadout(c);
     setMouseCursor(c == nullptr            ? juce::MouseCursor::NormalCursor
@@ -582,6 +689,7 @@ void LiliEditor::mouseDown(const juce::MouseEvent& e) {
         c->param->beginChangeGesture();
         break;
     case Kind::Pad:
+    case Kind::OutMode:
     case Kind::Toggle2:
         c->param->beginChangeGesture();
         setNormalised(*c, c->param->getValue() >= 0.5f ? 0.0f : 1.0f);

@@ -4,6 +4,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <array>
 #include <vector>
 
 // The rendered circuit-board editor. Art is pre-rendered in Blender (see
@@ -25,8 +26,9 @@ class LiliEditor final : public juce::AudioProcessorEditor,
     void mouseUp(const juce::MouseEvent& e) override;
     void mouseDoubleClick(const juce::MouseEvent& e) override;
     void mouseExit(const juce::MouseEvent& e) override;
+    void parentHierarchyChanged() override;
 
-    // Seed samples: drop an audio file on the left (1·2) or right (3·4) half.
+    // Seed samples: drop an audio file on the left (1·2) or right (3·4) half of the board.
     bool isInterestedInFileDrag(const juce::StringArray& files) override;
     void fileDragEnter(const juce::StringArray& files, int x, int y) override;
     void fileDragMove(const juce::StringArray& files, int x, int y) override;
@@ -35,15 +37,17 @@ class LiliEditor final : public juce::AudioProcessorEditor,
     void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override;
 
   private:
-    enum class Kind { Knob, Toggle3, Toggle2, Pad };
+    // OutMode: the clickable "MONO OUT" / "STEREO OUT" silkscreen (a two-state label).
+    enum class Kind { Knob, Toggle3, Toggle2, Pad, OutMode };
 
     struct Control {
         Kind kind;
         juce::RangedAudioParameter* param;
-        juce::Point<float> centre; // board px
-        bool upIsHigh = false;     // Toggle2: is "lever up" the parameter's 1.0?
-        juce::String label;        // silkscreen name, for the hover readout
-        juce::StringArray options; // toggle positions' legends (jumper-style toggles)
+        juce::Point<float> centre;  // board px
+        bool upIsHigh = false;      // Toggle2: is "lever up" the parameter's 1.0?
+        juce::String label;         // name for the hover readout (the silkscreen word, or its long form)
+        juce::StringArray options;  // toggle positions' legends, top to bottom
+        juce::Rectangle<float> hit; // OutMode: click area, board px
     };
 
     // A pre-rendered glow delta (tools/art/export_ui.py), kept only as runs of
@@ -76,7 +80,10 @@ class LiliEditor final : public juce::AudioProcessorEditor,
                     juce::Point<float> centre);
     juce::String readoutText(const Control& c) const;
     juce::Rectangle<float> readoutArea(const Control& c) const; // board px
+    juce::Rectangle<float> spriteArea(const Control& c) const;  // what a value change repaints, board px
     void setReadout(Control* c);
+    void applyOutMode(); // bakes the current MONO OUT / STEREO OUT patch into the board images
+    void hideForSnapshot();
 
     LiliProcessor& processor_;
     juce::Image board_;
@@ -85,13 +92,20 @@ class LiliEditor final : public juce::AudioProcessorEditor,
     std::vector<GlowLayer> glow_;
     juce::Image knobStrip_;
     juce::Image toggleStrip_;
+    juce::Image outModeStrip_;            // MONO OUT / STEREO OUT board patches, frame = stereo state
+    juce::Rectangle<float> outModePatch_; // where that patch sits, board px
+    Control* outMode_ = nullptr;          // null until the processor has a "stereo" parameter
+    int outModeFrame_ = -1;               // frame currently in pristine_
     std::vector<Control> controls_;
     std::vector<juce::Point<float>> meters_; // centre of each pair's 5-LED meter, board px
+    float meterPitch_ = 10.0f;
+    std::array<juce::Rectangle<float>, 2> seedBoxes_; // GROUP 1·2 / 3·4 frames, board px (drop targets)
     lili::Telemetry telemetry_;
     std::vector<float> lastValues_;
     bool metersWereLit_ = false;
     float scale_ = 1.0f;
     int snapshotCountdown_ = 30; // timer ticks until the optional LILI_SNAPSHOT capture
+    juce::String snapshotPath_;  // LILI_SNAPSHOT: render offscreen, save, quit (standalone)
 
     int dropGroup_ = -1; // group highlighted while an audio file is dragged over
     juce::Font mono_{juce::FontOptions{}};

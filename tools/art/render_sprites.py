@@ -25,9 +25,10 @@ import bpy  # noqa: E402
 import parts  # noqa: E402
 import render_board as rb  # noqa: E402
 
-CX, CY = 560, 400  # render position on the board (lighting reference)
-KNOB_R = 12.0      # must match render_board's knob_cream(r=12.0)
-TOGGLE_S = 1.35    # must match render_board's toggle_switch(s=1.35)
+CX, CY = rb.W // 2, rb.H // 2  # render position on the board (lighting reference): its centre
+KNOB_R = 12.0                   # knob_cream(r=12.0), then scaled by the layout's knobScale
+KNOB_S = rb.LAYOUT["knobScale"]
+TOGGLE_S = rb.TOGGLE_S          # must match render_board's toggle_switch(s=TOGGLE_S)
 # Room for the long soft shadows the low key light throws to the lower right;
 # assemble_strip.py feathers the last margin so nothing shows a seam.
 SPRITE_PX = {"knob": 96, "toggle": 128}
@@ -52,7 +53,7 @@ def setup(scene, size_px, samples):
 
 
 def render_knob(scene, path, frames):
-    objs = parts.knob_cream(CX, CY, 0.5, r=KNOB_R, ticks=False)  # built pointing up
+    objs = parts.scale_about(parts.knob_cream(CX, CY, 0.5, r=KNOB_R, ticks=False), CX, CY, KNOB_S)  # pointing up
     pivot = bpy.data.objects.new("pivot", None)
     scene.collection.objects.link(pivot)
     pivot.location = (CX * rb.PX, -CY * rb.PX, 0.0)

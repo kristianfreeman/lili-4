@@ -2,7 +2,7 @@
 
 A four-petal garden drone synthesizer for macOS: AU, VST3 and a standalone app, built universal for Apple Silicon and Intel.
 
-![The LILI-4 board: four petals fanning out from a lily-shaped signal path on a green circuit board](docs/screenshot.jpg)
+![The LILI-4 board: a wide green circuit board with four petal sections across the top, the groups, LFOs and a small glowing lily in the middle, and echo and output along the bottom](docs/screenshot.jpg)
 
 ## The instrument
 
@@ -18,9 +18,20 @@ A four-petal garden drone synthesizer for macOS: AU, VST3 and a standalone app, 
 
   TIMBRE sets the pulse shape, the wavetable morph or the position in the sample, depending on the engine.
 - **BLOOM / DRIFT**: slow generative growth. Petals breathe awake without notes and wander in tune and timbre, over cycles from minutes down to seconds.
-- **BEE**: the Pollinator, a Lorenz-attractor modulator that replaces the LFO pair. LFO A sets its flight speed and LFO B its chaos.
+- **BEE**: the Pollinator, a Lorenz-attractor modulator that replaces the LFO pair. **RATE A** sets its flight speed and **RATE B** its chaos.
 - **ECHO**: two modulated delay lines, feeding **DRIVE**.
-- **Rendered circuit-board UI.** The board is rendered in Blender and composited natively. Knobs and toggles are drawn at their live values, and the traces, pads, LEDs and meters glow with the actual audio.
+- **Stereo or mono out.** In stereo, the petals sit left and right as they do on the board, and the two echo lines cross between the channels. The bass stays centred, so the mix folds down to mono cleanly. Mono is the original single-channel output.
+- **Rendered circuit-board UI.** The board is rendered in Blender and composited natively. Knobs and toggles are drawn at their live values, and the traces, pads, LEDs and meters glow with the actual audio. The window is 1000×424 by default; drag its corner to resize it from 700 to 2000 wide.
+
+## Installing
+
+Download the zips from the [latest release](https://github.com/kristianfreeman/lili-4/releases/latest). They are universal builds for Apple Silicon and Intel, macOS 11 or later.
+
+- **AU:** unzip `LILI-4.component` into `~/Library/Audio/Plug-Ins/Components`.
+- **VST3:** unzip `LILI-4.vst3` into `~/Library/Audio/Plug-Ins/VST3`.
+- **Standalone:** unzip `LILI-4.app` into `Applications`.
+
+The builds are not notarized, so macOS may block them the first time. Right-click the app and choose **Open**, or remove the quarantine flag with `xattr -dr com.apple.quarantine <path>`.
 
 ## Playing it
 
@@ -30,7 +41,8 @@ On the board:
 
 - **Knobs:** drag up or down (hold Shift for fine control). Double-click to reset, or use the scroll wheel.
 - **Toggles:** click to throw. On 3-way toggles, click above or below the pivot.
-- **Petal pads:** click to latch a petal on.
+- **Petal pads** (S1–S4, in the group boxes): click to latch a petal on.
+- **MONO OUT / STEREO OUT** (top right): click the label to switch the output between mono and stereo.
 - **Hover** over any control to see its value in real units.
 - **Drop an audio file** on the left or right half of the board to load a Seed sample for group 1·2 or 3·4.
 

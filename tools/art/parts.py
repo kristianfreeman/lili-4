@@ -10,7 +10,7 @@ import math
 import bmesh
 import bpy
 
-from render_board import PX, box, cylinder, link, material, poly_curve
+from render_board import PX, box, brushed_gold, brushed_metal, cylinder, link, material, plastic_grain, poly_curve, silk_ink
 
 # ----------------------------------------------------------------------------- materials
 
@@ -22,21 +22,22 @@ def mats():
         return _MATS
     _MATS.update(
         knob_black=material("knob_black", (0.012, 0.012, 0.013), rough=0.32, coat=0.35, coat_rough=0.2),
-        knob_cream=material("knob_cream", (0.80, 0.74, 0.60), rough=0.38, coat=0.25, sss=0.05),
+        knob_cream=plastic_grain(material("knob_cream", (0.80, 0.74, 0.60), rough=0.38, coat=0.25, sss=0.05),
+                                 (0.80, 0.74, 0.60)),
         knob_alu=material("knob_alu", (0.86, 0.86, 0.85), rough=0.24, metal=1.0),
         paint_white=material("paint_white", (0.9, 0.89, 0.85), rough=0.5),
         paint_black=material("paint_black", (0.02, 0.02, 0.02), rough=0.6),
         trim_blue=material("trim_blue2", (0.03, 0.10, 0.38), rough=0.38, coat=0.3, bump=0.12, bump_scale=900),
         trim_ink=material("trim_ink", (0.55, 0.62, 0.78), rough=0.6),
         brass=material("brass2", (0.86, 0.64, 0.33), rough=0.22, metal=1.0),
-        chrome=material("chrome2", (0.92, 0.92, 0.93), rough=0.08, metal=1.0),
-        nickel=material("nickel", (0.78, 0.78, 0.76), rough=0.3, metal=1.0),
+        chrome=brushed_metal("chrome2", (0.90, 0.90, 0.91), 0.20, 0.30),
+        nickel=brushed_metal("nickel", (0.78, 0.78, 0.76), 0.26, 0.40),
         tin=material("tin2", (0.72, 0.72, 0.70), rough=0.3, metal=1.0),
         black_plastic=material("black_plastic2", (0.02, 0.02, 0.022), rough=0.45),
         cap_cream=material("cap_cream", (0.83, 0.78, 0.66), rough=0.4),
         led_amber=material("led_amber_on", (1.0, 0.5, 0.15), emit=(1.0, 0.45, 0.1), emit_strength=3.0,
                            rough=0.1),
-        silk=material("silk2", (0.86, 0.85, 0.80), rough=0.75),
+        silk=silk_ink(1.0),
     )
     return _MATS
 
@@ -88,13 +89,26 @@ def pointer(name, cx, cy, value, r_in, r_out, width, z, mat, height=0.00015):
     return obj
 
 
-def scale_ticks(cx, cy, r_in, r_out, count=11, mat=None, width=1.1):
+def scale_about(objs, cx, cy, s):
+    """Scale parts built at full size about the board point (cx, cy) and the board surface."""
+    if s == 1.0:
+        return objs
+    for o in objs:
+        o.location.x = cx * PX + (o.location.x - cx * PX) * s
+        o.location.y = -cy * PX + (o.location.y + cy * PX) * s
+        o.location.z *= s
+        o.scale = tuple(v * s for v in o.scale)
+    return objs
+
+
+def scale_ticks(cx, cy, r_in, r_out, count=11, mat=None, width=1.0, r_long=None):
     """Silkscreen scale around a knob (270 degrees, long ticks at ends and middle)."""
     mat = mat or mats()["silk"]
+    r_long = r_out + 3 if r_long is None else r_long
     polys = []
     for i in range(count):
         a = math.radians(-135 + 270 * i / (count - 1))
-        ro = r_out + (3 if i in (0, count // 2, count - 1) else 0)
+        ro = r_long if i in (0, count // 2, count - 1) else r_out
         polys.append(([(cx + r_in * math.sin(a), cy - r_in * math.cos(a)),
                        (cx + ro * math.sin(a), cy - ro * math.cos(a))], False))
     return poly_curve("ticks", polys, width, mat, z=0.0003, flatten=0.2)
@@ -144,9 +158,9 @@ def knob_alu(cx, cy, value, r=14.0):
     pointer("alu_line", cx, cy, value, 4.0, r - 2.5, 1.6, 0.0097, m["paint_black"], height=0.0001)
 
 
-def knob_ticks(cx, cy, r=13.0):
+def knob_ticks(cx, cy, r=13.0, r_in=None, r_out=None, r_long=None):
     """The silkscreen scale that goes with knob_cream (printed on the board)."""
-    return scale_ticks(cx, cy, r + 7, r + 10)
+    return scale_ticks(cx, cy, r + 7 if r_in is None else r_in, r + 10 if r_out is None else r_out, r_long=r_long)
 
 
 def knob_cream(cx, cy, value, r=13.0, ticks=True):
@@ -167,18 +181,17 @@ def knob_cream(cx, cy, value, r=13.0, ticks=True):
 
 # ----------------------------------------------------------------------------- touch pads
 
-def touch_pad(cx, cy, r=20.0, pitch=4.0, gap=2.2, lit=False):
+def touch_pad(cx, cy, r=20.0, pitch=4.0, gap=2.2, lit=False, width=2.0):
     """Interdigitated touch sensor: two gold combs, each spined on a half ring.
 
     A fingertip bridges the two electrodes, like the Lyra's touch plates.
     `lit` gives the combs a warm glow (the voice is sounding).
     """
     if lit:
-        gold = mats().setdefault("enig_lit", material("enig_lit", (1.0, 0.74, 0.34), rough=0.26, metal=0.6,
-                                                      emit=(1.0, 0.55, 0.18), emit_strength=1.6))
+        gold = mats().setdefault("enig_lit", brushed_gold("enig_lit", emit=(1.0, 0.55, 0.18), emit_strength=0.55,
+                                                          metal=0.6))
     else:
-        gold = mats().setdefault("enig", material("enig", (1.0, 0.74, 0.34), rough=0.26, metal=1.0,
-                                                  bump=0.05, bump_scale=1200))
+        gold = mats().setdefault("enig", brushed_gold("enig"))
     polys_a, polys_b = [], []
     steps = 40
     for side, polys in ((-1, polys_a), (1, polys_b)):
@@ -199,14 +212,14 @@ def touch_pad(cx, cy, r=20.0, pitch=4.0, gap=2.2, lit=False):
         start = cx + side * half
         end = cx - side * (half - gap - 1.0)
         (polys_a if side < 0 else polys_b).append(([(start, cy + y), (end, cy + y)], False))
-    return [poly_curve("pad_comb_a", polys_a, 1.6, gold, z=0.0, flatten=0.35),
-            poly_curve("pad_comb_b", polys_b, 1.6, gold, z=0.0, flatten=0.35)]
+    return [poly_curve("pad_comb_a", polys_a, width, gold, z=0.0, flatten=0.35),
+            poly_curve("pad_comb_b", polys_b, width, gold, z=0.0, flatten=0.35)]
 
 
 # ----------------------------------------------------------------------------- indicators
 
-def led_meter(cx, cy, n=5, lit_count=0, pitch=12.0):
-    """A row of 0805 SMD LEDs (amber, the last one pink for 'hot'), centred on (cx, cy).
+def led_meter(cx, cy, n=5, lit_count=0, pitch=10.0):
+    """A row of 0603 SMD LEDs lying across the row (amber, the last one pink for 'hot'), centred on (cx, cy).
 
     Returns the lens objects, left to right.
     """
@@ -223,8 +236,8 @@ def led_meter(cx, cy, n=5, lit_count=0, pitch=12.0):
             col = (1.0, 0.12, 0.3) if hot else (1.0, 0.34, 0.04)
             m[key] = (material(key, col, rough=0.15, emit=col, emit_strength=1.3) if on
                       else material(key, tuple(c * 0.28 for c in col), rough=0.15))
-        box("smd_led_body", x - 3.5, cy - 5, 7, 10, 0.0006, body, bevel=0.4)
-        lenses.append(box("smd_led_lens", x - 2.6, cy - 3.2, 5.2, 6.4, 0.0009, m[key], bevel=0.8))
+        box("smd_led_body", x - 3.6, cy - 3, 7.2, 6, 0.0006, body, bevel=0.4)
+        lenses.append(box("smd_led_lens", x - 2.7, cy - 2.1, 5.4, 4.2, 0.0009, m[key], bevel=0.7))
     return lenses
 
 

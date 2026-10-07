@@ -40,6 +40,7 @@ juce_add_binary_data(LiliAssets
         assets/board.png
         assets/knob_strip.png
         assets/toggle_strip.png
+        assets/outmode_strip.png
         assets/glow/glow.json
         ${lili_glow_assets}
         ${PROJECT_SOURCE_DIR}/art/board.json
@@ -57,5 +58,8 @@ target_link_libraries(LILI4
         juce::juce_audio_utils
     PUBLIC
         juce::juce_recommended_config_flags
-        juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
+if(LILI_LTO)
+    target_link_libraries(LILI4 PUBLIC juce::juce_recommended_lto_flags)
+endif()

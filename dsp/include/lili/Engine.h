@@ -66,8 +66,13 @@ class Engine {
     // Seed sample for a group (0 = petals 1·2, 1 = 3·4), or nullptr. Any thread; lock-free.
     void setSeed(int group, const SeedSample* sample);
 
-    // Mono engine; `right` may be null or equal to `left`.
+    // Renders `numSamples` into left/right. With Params::stereo off, or with `right` null or equal
+    // to `left` (a mono output), this is the reference's mono engine and L = R exactly. Otherwise
+    // the petals, echoes and drive are spread across L and R (docs/SPEC.md "Stereo").
     void process(float* left, float* right, int numSamples);
+
+    // Stereo width switch time: on/off crossfades over this, so toggling never clicks.
+    static constexpr float kWidthRampMs = 40.0f;
 
     // Pitch of a voice before smoothing, vibrato and FM (for tests/UI).
     static float voiceFrequency(const Params& params, int voice);
@@ -135,7 +140,10 @@ class Engine {
     };
 
     void retriggerSensor(Pair& pair);
-    float processSample();
+    // One sample of output; returns `left`, writes `right` (equal to it in mono).
+    float processSample(float& right);
+    // The reference's mono delay and master section (stereo width 0).
+    float processMono(float in, float lfoMod);
 
     float sampleRate_ = 44100.0f;
     float invSampleRate_ = 1.0f / 44100.0f;
@@ -147,6 +155,7 @@ class Engine {
     std::array<int, kNumGroups> engine_{};
     std::array<Smoother, kNumGroups> table_{};
     alignas(16) std::array<float, kNumVoices> wavePhase_{};
+    std::array<LowPass1, kNumVoices> waveBody_{}; // the Classic triangle's 100 Hz low-register lift
     const WavetableBank* bank_ = nullptr;
 
     // Seed engine: per-voice two-grain clouds over the group's sample.
@@ -212,10 +221,20 @@ class Engine {
     int delayWaveform_ = 0;
     Noise noise_;
 
-    // Master
+    // Master. In stereo, driveHp_/shapeHp_ are the left channel and the *R_ pair the right.
     Smoother drive_, distMix_, volume_;
     HighPass1 driveHp_, shapeHp_, totalFbHp_;
+    HighPass1 driveHpR_, shapeHpR_;
     FeedbackPath totalFeedback_;
+
+    // Stereo image: width 0 = the mono engine (exact), 1 = full spread. Side signals go through a
+    // 4th-order high-pass so the bass stays centred.
+    bool stereo_ = true;
+    bool widthSnap_ = true;      // the first process() after reset() jumps straight to its width
+    bool stereoRunning_ = false; // the last sample took the stereo path
+    LinearRamp width_;
+    std::array<ButterHighPass2, 2> voiceSideHp_{};
+    std::array<ButterHighPass2, 2> echoSideHp_{};
 
     Telemetry telemetry_;
 };
