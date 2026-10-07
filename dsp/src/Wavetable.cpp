@@ -74,21 +74,29 @@ void harmonic(int family, int frameIndex, double t, int n, double& amp, double& 
     case 0: // Stem: saw -> hollow (odd-only) pulse
         amp = (n % 2 == 1 ? 1.0 : 1.0 - t) / dn;
         break;
-    case 1: { // Reed: a formant sweeping up the spectrum over a quiet body
+    case 1: { // Reed: a formant sweeping up the spectrum over a soft body
+        // The body (1/n^1.5, a rounded saw) keeps the fundamental near half the frame's energy at every
+        // morph; the formant's peak shrinks as it widens, so it colours the body instead of replacing it.
         const double centre = 2.0 + t * 30.0;
         const double width = 1.5 + t * 4.0;
         const double d = (dn - centre) / width;
-        amp = std::exp(-0.5 * d * d) + 0.25 / dn;
+        amp = 1.0 / std::pow(dn, 1.5) + 0.5 * std::sqrt(1.5 / width) * std::exp(-0.5 * d * d);
         break;
     }
     case 2: // Glass: sparse partials, brighter with t
         amp = isSparsePartial(n) ? 1.0 / std::pow(dn, 1.6 - 0.9 * t) : 0.0;
         break;
     default: { // Moss: seeded random spectra, each frame its own growth
-        const auto f = static_cast<uint32_t>(frameIndex);
-        const double r = hashUnit(f, static_cast<uint32_t>(n));
-        amp = r * r / std::pow(dn, 0.85);
-        phase = 2.0 * kPi * hashUnit(f + 101u, static_cast<uint32_t>(n));
+        // The fundamental is fixed (amplitude 1, sine phase, like the other families) and the overtones
+        // grow at random above it. Phases depend on the harmonic only, so morphing between frames
+        // interpolates amplitudes and never cancels a partial.
+        if (n == 1) {
+            amp = 1.0;
+            break;
+        }
+        const double r = hashUnit(static_cast<uint32_t>(frameIndex), static_cast<uint32_t>(n));
+        amp = 2.0 * r * r / std::pow(dn, 0.85);
+        phase = 2.0 * kPi * hashUnit(101u, static_cast<uint32_t>(n));
         break;
     }
     }

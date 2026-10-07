@@ -3,6 +3,12 @@
 #include <algorithm>
 #include <cmath>
 
+#if defined(__GNUC__) || defined(__clang__)
+#define LILI_ALWAYS_INLINE __attribute__((always_inline)) inline
+#else
+#define LILI_ALWAYS_INLINE inline
+#endif
+
 namespace lili {
 
 namespace {
@@ -17,8 +23,29 @@ constexpr std::array<int, kNumPairs> kPartnerSwitchOn{3, 0, 1, 2};
 
 constexpr float kVoiceMix = 0.16f;
 constexpr float kPulseWidth = 0.53125f;
-constexpr float kWaveGain = 0.82f; // wavetables are RMS-normalised; this matches the classic pulse level
-constexpr float kSeedGain = 0.8f;  // user samples are rarely at full scale
+// Wavetables are RMS-normalised. With the body below, 0.7 puts Wave about 1 dB under Classic's loudness,
+// where its peaks (saw-like shapes have more crest than the triangle) match Classic's.
+constexpr float kWaveGain = 0.7f;
+constexpr float kSeedGain = 0.8f; // user samples are rarely at full scale
+// Wave body: the Classic triangle is its pulse through a one-pole low-pass at max(f/4, 100 Hz), scaled to
+// sit at the pulse level from about C4 up. Below that the 100 Hz floor lets up to sqrt(17) (+12.3 dB) more
+// fundamental through, which is where the instrument's low-register weight comes from. The Wave engine
+// gets the same voicing as a one-pole shelf on that 100 Hz corner: x + (sqrt(17) - 1) * LP1(x, 100 Hz).
+constexpr float kBodyHz = 100.0f;
+constexpr float kBodyLift = 3.1231056f; // sqrt(17) - 1
+
+// Stereo (docs/SPEC.md "Stereo"). Each oscillator sits at a fixed place in the field, mirrored about
+// the centre: group 1·2 to the left and 3·4 to the right, as on the board (petals at -0.5, -0.2, +0.2,
+// +0.5), and a petal's two oscillators 0.3 apart, A outside and B inside, so their beating drifts
+// across the image. Pans are linear (L = 1 + pan, R = 1 - pan), so L + R is exactly the mono mix, and
+// nothing is hard-panned: the widest oscillator is 13.5 dB down on the far side.
+constexpr std::array<float, kNumVoices> kVoicePan{-0.65f, -0.35f, -0.35f, -0.05f, 0.35f, 0.05f, 0.65f, 0.35f};
+// Side signals (petal placement and echo cross-feed) pass a 4th-order Linkwitz-Riley high-pass at this
+// corner, so the bass stays centred (-15 dB at 100 Hz, -29 dB at 65 Hz) and a fold-down keeps all of it.
+constexpr float kSideHz = 150.0f;
+// The echoes return crosswise: line 1 (fed from L) comes back mostly on R, line 2 on L. 0.6 puts
+// each line 12 dB lower on its own side than on the other: wide, but neither is hard-panned.
+constexpr float kEchoCross = 0.6f;
 
 float leak(bool on) { return on ? 1.0f : 0.001f; }
 int groupOf(int voice) { return voice / 4; }
@@ -95,6 +122,9 @@ void Engine::prepare(double sampleRate, const EngineConfig& config) {
     for (auto& t : table_) {
         t.prepare(sampleRate_);
     }
+    for (auto& b : waveBody_) {
+        b.setCutoff(kBodyHz, sampleRate_);
+    }
     freqCoef_ = Smoother::coefficient(sampleRate_);
 
     Noise rng(config_.seed * 2654435761u + 1u);
@@ -135,6 +165,15 @@ void Engine::prepare(double sampleRate, const EngineConfig& config) {
     shapeHp_.setCutoff(10.0f, sampleRate_);
     totalFbHp_.setCutoff(3.0f, sampleRate_);
     totalFeedback_.setDelay(config_.legacyBlockFeedback ? 64 : 1);
+    driveHpR_.setCutoff(20.0f, sampleRate_);
+    shapeHpR_.setCutoff(10.0f, sampleRate_);
+    width_.prepare(sampleRate_);
+    for (auto& hp : voiceSideHp_) {
+        hp.setCutoff(kSideHz, sampleRate_);
+    }
+    for (auto& hp : echoSideHp_) {
+        hp.setCutoff(kSideHz, sampleRate_);
+    }
 
     reset();
 }
@@ -146,6 +185,9 @@ void Engine::reset() {
     }
     osc_.reset(kPulseWidth);
     wavePhase_.fill(0.0f);
+    for (auto& b : waveBody_) {
+        b.reset();
+    }
     bloomTune_.fill(1.0f);
     bloomTimbre_.fill(0.0f);
     bloomBreath_.fill(0.0f);
@@ -176,6 +218,16 @@ void Engine::reset() {
     shapeHp_.reset();
     totalFbHp_.reset();
     totalFeedback_.reset();
+    driveHpR_.reset();
+    shapeHpR_.reset();
+    width_.reset(0.0f);
+    widthSnap_ = true;
+    for (auto& hp : voiceSideHp_) {
+        hp.reset();
+    }
+    for (auto& hp : echoSideHp_) {
+        hp.reset();
+    }
     snapOnNextParams_ = true;
 }
 
@@ -293,6 +345,11 @@ void Engine::setParams(const Params& p) {
     for (size_t g = 0; g < kNumGroups; ++g) {
         target(hold_[g], p.hold[g] * p.hold[g]);
         target(table_[g], p.table[g]);
+        if (engine_[g] != p.engine[g]) {
+            for (size_t v = 4 * g; v < 4 * g + 4; ++v) {
+                waveBody_[v].reset(); // don't carry a stale body into a new engine
+            }
+        }
         engine_[g] = p.engine[g];
     }
     crossSwitch_ = p.crossSwitch;
@@ -323,17 +380,30 @@ void Engine::setParams(const Params& p) {
     target(drive_, dbtorms(std::pow(3.0f, 2.0f * p.drive + 1.0f) + 3.0f + 100.0f));
     target(distMix_, p.distMix);
     target(volume_, p.volume * p.volume);
+    stereo_ = p.stereo;
 
     snapOnNextParams_ = false;
 }
 
 void Engine::process(float* left, float* right, int numSamples) {
     auto& tm = telemetry_;
+    const bool stereoOut = right != nullptr && right != left;
+    const float widthTarget = stereo_ && stereoOut ? 1.0f : 0.0f;
+    if (widthSnap_) {
+        width_.reset(widthTarget); // nothing is sounding yet: start at the requested width
+        widthSnap_ = false;
+    } else if (widthTarget != width_.target()) {
+        width_.rampTo(widthTarget, kWidthRampMs);
+    }
+
     for (int n = 0; n < numSamples; ++n) {
-        const float y = processSample();
-        left[n] = y;
-        if (right != nullptr && right != left) {
-            right[n] = y;
+        float r = 0.0f;
+        const float l = processSample(r);
+        if (stereoOut) {
+            left[n] = l;
+            right[n] = r;
+        } else {
+            left[n] = l == r ? l : 0.5f * (l + r); // only differs while fading out of stereo
         }
     }
 
@@ -359,7 +429,7 @@ void Engine::clearTelemetryPeaks() {
     tm.drivePeak = tm.outPeak = tm.totalFbPeak = 0.0f;
 }
 
-float Engine::processSample() {
+float Engine::processSample(float& right) {
     auto& tm = telemetry_;
 
     // --- Hyper LFO ---------------------------------------------------------
@@ -454,6 +524,7 @@ float Engine::processSample() {
     }
 
     std::array<float, kNumPairs> pairOut{};
+    std::array<float, kNumVoices> voiceOut{}; // each oscillator alone, for the stereo placement
     for (size_t v = 0; v < kNumVoices; ++v) {
         const float sharp = clampf(pairSharp[v / 2] + bloomTimbre_[v], 0.0f, 1.0f);
         const size_t g = v / 4;
@@ -462,6 +533,7 @@ float Engine::processSample() {
             // Sharp is the morph through the table (its smoother holds x^2).
             const float dt = std::fabs(hz[v]) * invSampleRate_;
             shaped = kWaveGain * bank_->read(family[g], std::sqrt(sharp), wavePhase_[v], dt);
+            shaped += kBodyLift * waveBody_[v].process(shaped);
             wavePhase_[v] = wrap01(wavePhase_[v] + dt);
         } else if (engine_[g] == PetalSeed) {
             const SeedSample* seed = seeds_[g].load(std::memory_order_acquire);
@@ -476,7 +548,8 @@ float Engine::processSample() {
         const float thump = v % 2 == 0 ? petalThump[v / 2] : 0.0f;
         const float gain = std::min(l * l + hold[v / 4] + bloomBreath_[v], 1.0f);
         tm.voiceGain[v] = gain;
-        pairOut[v / 2] += (shaped + thump) * gain;
+        pairOut[v / 2] += (shaped + thump) * gain; // kept as one expression: mono stays bit-identical
+        voiceOut[v] = (shaped + thump) * gain;
     }
 
     float voiceSum = 0.0f;
@@ -487,10 +560,104 @@ float Engine::processSample() {
     }
     const float in = voiceSum * kVoiceMix;
 
+    const float lfoMod = delaySource_ == 2 ? (delayWaveform_ == 0 ? delTri : delSqr) : 0.0f;
+    const float w = width_.next();
+    if (w == 0.0f) {
+        stereoRunning_ = false;
+        const float out = processMono(in, lfoMod);
+        right = out;
+        return out;
+    }
+    if (!stereoRunning_) {
+        // Entering stereo: the right channel's drive picks up where the mono (left) one is, and the
+        // side filters start clean. The width ramps up from 0, so nothing steps.
+        stereoRunning_ = true;
+        driveHpR_ = driveHp_;
+        shapeHpR_ = shapeHp_;
+        for (auto& hp : voiceSideHp_) {
+            hp.reset();
+        }
+        for (auto& hp : echoSideHp_) {
+            hp.reset();
+        }
+    }
+
+    // --- Stereo: petals placed L/R, bass centred -----------------------------
+    float voiceSide = 0.0f;
+    for (size_t v = 0; v < kNumVoices; ++v) {
+        voiceSide += kVoicePan[v] * voiceOut[v];
+    }
+    const float sideIn = w * kVoiceMix * voiceSideHp_[1].process(voiceSideHp_[0].process(voiceSide));
+    const float inL = in + sideIn;
+    const float inR = in - sideIn;
+
+    // --- Dual mod delay: line 1 fed from L, line 2 from R ---------------------
+    const float noise = 0.001f * noise_.next();
+    const float fb = delayFeedback_.next();
+    const float msToSamples = 0.001f * sampleRate_;
+    std::array<float, 2> loops{};
+    for (size_t k = 0; k < delay_.size(); ++k) {
+        auto& d = delay_[k];
+        const float self = d.selfLp.process(0.5f * d.lastWrite);
+        const float mod = lfoMod + (delaySource_ == 0 ? self : 0.0f);
+        const float ms = d.timeMs.next() + d.depthMs.next() * mod;
+        const float read = d.line.read(ms * msToSamples);
+        const float loop = d.expander.process(d.comp.process(d.lp.process(d.hp.process(read))));
+        float write = (k == 0 ? inL : inR) + noise + fb * loop;
+        if (config_.delaySafetySaturator) {
+            write = 4.0f * std::tanh(0.25f * write);
+        }
+        d.line.push(write);
+        d.lastWrite = write;
+        tm.delayPeak[k] = std::max(tm.delayPeak[k], std::fabs(loop));
+        loops[k] = loop;
+    }
+    // ...and they return crosswise: line 2 to the left, line 1 to the right. The mid goes through the
+    // reference's saturator unchanged; the cross gets its own, so its highs never intermodulate with
+    // the bass in the mid (that would leak low end into the sides).
+    const float wetNorm = std::max(fb, 1.5f);
+    const float wet = tanhP((loops[0] + loops[1]) / wetNorm);
+    const float cross = kEchoCross * echoSideHp_[1].process(echoSideHp_[0].process(loops[1] - loops[0]));
+    const float wetSide = w * tanhP(cross / wetNorm);
+    const float wetL = wet + wetSide;
+    const float wetR = wet - wetSide;
+    const float mix = delayMix_.next();
+    const float delayedL = 0.7f * inL * (1.0f - mix) + mix * wetL;
+    const float delayedR = 0.7f * inR * (1.0f - mix) + mix * wetR;
+
+    // --- Drive / distortion / volume, per channel ---------------------------
+    const float dG = drive_.next();
+    const float dm = distMix_.next();
+    const float vol = volume_.next();
+    const float driveNorm = clampf(dG, 1.0f, 4.0f);
+    const auto drive = [&](float x, HighPass1& driveHp, HighPass1& shapeHp, float& shapedOut) {
+        const float t = tanhP(driveHp.process(x * dG));
+        shapedOut = shapeHp.process(t + 0.25f * pow31(t)) / driveNorm;
+        return x * (1.0f - dm) + (shapedOut + 0.1f * x) * dm;
+    };
+    float shapedL = 0.0f;
+    float shapedR = 0.0f;
+    const float mixedL = drive(delayedL, driveHp_, shapeHp_, shapedL);
+    const float mixedR = drive(delayedR, driveHpR_, shapeHpR_, shapedR);
+    // Total feedback stays a mono FM source: the mid of the two channels.
+    const float totalFb = totalFbHp_.process(tanhP(0.5f * (mixedL + mixedR)));
+    totalFeedback_.write(totalFb);
+
+    const float outL = mixedL * vol;
+    const float outR = mixedR * vol;
+    tm.drivePeak = std::max(tm.drivePeak, std::max(std::fabs(shapedL), std::fabs(shapedR)) * dm);
+    tm.totalFbPeak = std::max(tm.totalFbPeak, std::fabs(totalFb));
+    tm.outPeak = std::max(tm.outPeak, std::max(std::fabs(outL), std::fabs(outR)));
+    right = outR;
+    return outL;
+}
+
+// The reference's delay and master section, mono: the engine's output whenever the stereo width is 0.
+LILI_ALWAYS_INLINE float Engine::processMono(float in, float lfoMod) {
+    auto& tm = telemetry_;
     // --- Dual mod delay ----------------------------------------------------
     const float inN = in + 0.001f * noise_.next();
     const float fb = delayFeedback_.next();
-    const float lfoMod = delaySource_ == 2 ? (delayWaveform_ == 0 ? delTri : delSqr) : 0.0f;
     const float msToSamples = 0.001f * sampleRate_;
     float wetSum = 0.0f;
     for (size_t k = 0; k < delay_.size(); ++k) {
@@ -592,6 +759,7 @@ void setParam(Params& p, std::size_t index, float value) {
     case P_SENSOR_2:
     case P_SENSOR_3:
     case P_SENSOR_4: p.latch[at(P_SENSOR_1, index)] = on; break;
+    case P_STEREO: p.stereo = on; break;
     default: break;
     }
 }

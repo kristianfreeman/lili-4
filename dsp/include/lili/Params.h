@@ -53,6 +53,9 @@ struct Params {
     float bloom = 0.0f;                    // generative growth depth (0 = off)
     float drift = 0.4f;                    // bloom speed: 0 = ~5 min cycles, 1 = ~8 s
     bool bee = false;                      // Pollinator (Lorenz) replaces the LFO pair
+
+    // Output image (docs/SPEC.md "Stereo"). false = the reference's mono, L = R.
+    bool stereo = true;
 };
 
 enum PetalEngine : int { PetalClassic = 0, PetalWave = 1, PetalSeed = 2 };
@@ -66,6 +69,7 @@ struct ParamInfo {
     float defaultValue; // x for continuous, 0/1 for toggles, index for choices
     std::array<std::string_view, 3> choices;
     int numChoices;
+    int version = 1; // host parameter version hint: the release that added it
 };
 
 // Stable, ordered parameter list. Append only from here on; hosts store automation by id.
@@ -128,6 +132,7 @@ enum ParamIndex : std::size_t {
     P_SENSOR_2,
     P_SENSOR_3,
     P_SENSOR_4,
+    P_STEREO,
     kNumParams
 };
 
@@ -191,6 +196,7 @@ inline constexpr std::array<ParamInfo, kNumParams> kParamInfo{{
     {"sensor2", "Petal 2", ParamKind::Toggle, 0, {}, 0},
     {"sensor3", "Petal 3", ParamKind::Toggle, 0, {}, 0},
     {"sensor4", "Petal 4", ParamKind::Toggle, 0, {}, 0},
+    {"stereo", "Stereo", ParamKind::Toggle, 1, {}, 0, 2},
 }};
 // clang-format on
 

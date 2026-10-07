@@ -92,6 +92,35 @@ class LowPass1 {
     float last_ = 0.0f;
 };
 
+// 2nd-order Butterworth high-pass (RBJ cookbook, Q = 1/sqrt 2), transposed direct form II. Two in
+// series make a 4th-order Linkwitz-Riley high-pass (-6 dB at the corner, -24 dB/oct below).
+class ButterHighPass2 {
+  public:
+    void setCutoff(float hz, float sampleRate) {
+        const float k = std::tan(0.5f * kTwoPi * hz / sampleRate);
+        const float k2 = k * k;
+        const float norm = 1.0f / (1.0f + kSqrt2 * k + k2);
+        b0_ = norm;
+        a1_ = 2.0f * (k2 - 1.0f) * norm;
+        a2_ = (1.0f - kSqrt2 * k + k2) * norm;
+    }
+    float process(float x) {
+        const float y = b0_ * x + z1_;
+        z1_ = -2.0f * b0_ * x - a1_ * y + z2_;
+        z2_ = b0_ * x - a2_ * y;
+        return y;
+    }
+    void reset() { z1_ = z2_ = 0.0f; }
+
+  private:
+    static constexpr float kSqrt2 = 1.41421356f;
+    float b0_ = 1.0f;
+    float a1_ = 0.0f;
+    float a2_ = 0.0f;
+    float z1_ = 0.0f;
+    float z2_ = 0.0f;
+};
+
 // Exponential parameter smoother standing in for the reference's
 // [$1 23.22( -> [line~] ramps.
 class Smoother {
@@ -133,6 +162,7 @@ class LinearRamp {
         return value_;
     }
     float value() const { return value_; }
+    float target() const { return target_; }
     bool isRamping() const { return remaining_ > 0; }
     void reset(float v = 0.0f) {
         value_ = target_ = v;

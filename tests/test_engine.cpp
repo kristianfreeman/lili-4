@@ -3,6 +3,7 @@
 #include "lili/Wavetable.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <functional>
@@ -319,6 +320,67 @@ void testWavetablePitchAndRange() {
     check(peak < 5.0f, "wavetable crest stays bounded (peak " + std::to_string(peak) + ")");
 }
 
+void testWavetableFundamental() {
+    // Every frame, and every point between frames and families, keeps a real fundamental: at least
+    // 0.55 of a unit sine's amplitude (-5.2 dB), so no table is all overtones and morphing can't cancel it.
+    const auto& bank = lili::WavetableBank::instance();
+    const float dt = 65.0f / 48000.0f;
+    constexpr int kN = lili::WavetableBank::kSize;
+    std::vector<float> cycle(kN + 1);
+    double weakest = 1e9;
+    std::string where;
+    for (int f2 = 0; f2 <= 2 * (lili::WavetableBank::kFamilies - 1); ++f2) {
+        for (int m2 = 0; m2 <= 2 * (lili::WavetableBank::kFrames - 1); ++m2) {
+            const float family = 0.5f * static_cast<float>(f2);
+            const float morph =
+                static_cast<float>(m2) / static_cast<float>(2 * (lili::WavetableBank::kFrames - 1));
+            for (int i = 0; i < kN; ++i) {
+                cycle[static_cast<size_t>(i)] = bank.read(family, morph, static_cast<float>(i) / kN, dt);
+            }
+            const double h1 = harmonicMagnitude(cycle.data(), 1);
+            if (h1 < weakest) {
+                weakest = h1;
+                where = "family " + std::to_string(family) + " morph " + std::to_string(morph);
+            }
+        }
+    }
+    check(weakest > 0.55,
+          "wavetables keep their fundamental (weakest " + std::to_string(weakest) + " at " + where + ")");
+}
+
+// RMS of petal 1 alone (dry, no drive) after the attack.
+double petalRms(const lili::Params& base, float tune, int engine, float table, float timbre) {
+    lili::Engine e;
+    e.prepare(kSr);
+    lili::Params p = base;
+    p.distMix = 0.0f;
+    p.spread[0] = 0.5f; // unison, so the two oscillators don't beat during the measurement
+    p.tune[0] = tune;
+    p.engine[0] = engine;
+    p.table[0] = table;
+    p.sharp[0] = timbre;
+    e.setParams(p);
+    e.setGate(0, true);
+    render(e, 24000);
+    return render(e, 48000).rms;
+}
+
+void testWaveTracksClassicLevel() {
+    // The Classic triangle is louder in the low register (its 100 Hz smoothing floor); the Wave body must
+    // follow it there, and sit at the same level higher up.
+    const lili::Params base;
+    for (const float tune : {0.0f, 12 / 72.f, 24 / 72.f, 48 / 72.f}) {
+        const double classic = petalRms(base, tune, lili::PetalClassic, 0.0f, 0.0f);
+        for (const float table : {0.0f, 1 / 3.f, 2 / 3.f, 1.0f}) {
+            const double wave = petalRms(base, tune, lili::PetalWave, table, 0.5f);
+            const double db = 20.0 * std::log10(wave / classic);
+            check(db > -4.5 && db < 2.0, "wave level tracks classic at C" +
+                                             std::to_string(1 + static_cast<int>(tune * 6)) + ", table " +
+                                             std::to_string(table) + " (" + std::to_string(db) + " dB)");
+        }
+    }
+}
+
 void testWaveEngine() {
     lili::Engine e;
     e.prepare(kSr);
@@ -459,6 +521,246 @@ void testPollinatorBounded() {
           "pollinator drives the leaf LEDs");
 }
 
+// --- Stereo ----------------------------------------------------------------
+
+// Renders in 512-sample blocks into L and R (appended).
+void renderStereo(lili::Engine& e, int samples, std::vector<float>& left, std::vector<float>& right) {
+    std::vector<float> l(512);
+    std::vector<float> r(512);
+    for (int done = 0; done < samples; done += 512) {
+        const int n = std::min(512, samples - done);
+        e.process(l.data(), r.data(), n);
+        left.insert(left.end(), l.begin(), l.begin() + n);
+        right.insert(right.end(), r.begin(), r.begin() + n);
+    }
+}
+
+// A patch that touches every stage: FM, Pollinator, Bloom, echo with self-mod, drive.
+lili::Params busyPatch() {
+    lili::Params p;
+    p.engine = {lili::PetalClassic, lili::PetalWave};
+    p.table = {0.0f, 0.5f};
+    p.sharp = {0.3f, 0.6f, 0.2f, 0.8f};
+    p.mod = {0.6f, 0.3f, 0.5f, 0.4f};
+    p.source = {0, 2, 2, 0};
+    p.spread = {0.5f, 0.6f, 0.45f, 0.7f};
+    p.vibrato = true;
+    p.bee = true;
+    p.bloom = 0.5f;
+    p.delayMix = 0.6f;
+    p.delayFeedback = 0.6f;
+    p.delayTime = {0.55f, 0.62f};
+    p.delayModDepth = {0.4f, 0.3f};
+    p.delaySource = 0;
+    p.drive = 0.7f;
+    return p;
+}
+
+void startPetals(lili::Engine& e, const lili::Params& p) {
+    e.setParams(p);
+    for (int v = 0; v < lili::kNumPetals; ++v) {
+        e.setGate(v, true);
+    }
+}
+
+void testMonoModeIsTheMonoEngine() {
+    // Stereo off must be the reference's mono engine in both channels, bit for bit. (Against the
+    // engine before stereo existed: see docs/SPEC.md "Stereo"; checked with lili_render renders.)
+    std::vector<float> mono;
+    std::vector<float> left;
+    std::vector<float> right;
+    std::vector<float> stereoIntoMono;
+    for (int run = 0; run < 3; ++run) {
+        lili::Engine e;
+        e.prepare(kSr);
+        lili::Params p = busyPatch();
+        p.stereo = run == 2; // run 2: stereo on, but a mono output
+        startPetals(e, p);
+        if (run == 1) {
+            renderStereo(e, 96000, left, right);
+        } else {
+            render(e, 96000, run == 0 ? &mono : &stereoIntoMono);
+        }
+    }
+    check(left == mono, "stereo off: left is the mono engine");
+    check(right == mono, "stereo off: right is the mono engine");
+    check(stereoIntoMono == mono, "a mono output renders the mono engine even with stereo on");
+}
+
+// Energy of x after a 4th-order low-pass at `hz` (two cascaded Butterworth biquads).
+double lowEnergy(const std::vector<float>& x, double hz, size_t skip) {
+    const double k = std::tan(3.141592653589793 * hz / kSr);
+    const double q = 1.0 / std::sqrt(2.0);
+    const double norm = 1.0 / (1.0 + k / q + k * k);
+    const double b0 = k * k * norm;
+    const double a1 = 2.0 * (k * k - 1.0) * norm;
+    const double a2 = (1.0 - k / q + k * k) * norm;
+    std::array<double, 4> z{}; // two stages, transposed direct form II
+    double sum = 0.0;
+    for (size_t i = 0; i < x.size(); ++i) {
+        double y = x[i];
+        for (size_t st = 0; st < 2; ++st) {
+            const double in = y;
+            y = b0 * in + z[2 * st];
+            z[2 * st] = 2.0 * b0 * in - a1 * y + z[2 * st + 1];
+            z[2 * st + 1] = b0 * in - a2 * y;
+        }
+        if (i >= skip) {
+            sum += y * y;
+        }
+    }
+    return sum;
+}
+
+double energy(const std::vector<float>& x, size_t skip) {
+    double sum = 0.0;
+    for (size_t i = skip; i < x.size(); ++i) {
+        sum += static_cast<double>(x[i]) * x[i];
+    }
+    return sum;
+}
+
+void testStereoFoldsDownToMono() {
+    // (L + R) / 2 must keep the mono engine's low end and loudness: no cancellation, no thinning.
+    lili::Params def;
+    lili::Params echo;
+    echo.delayMix = 0.65f;
+    echo.delayFeedback = 0.6f;
+    echo.delayModDepth = {0.35f, 0.25f};
+    echo.delayTime = {0.56f, 0.63f};
+    echo.vibrato = true;
+    lili::Params wave;
+    wave.engine = {lili::PetalWave, lili::PetalWave};
+    wave.sharp = {0.3f, 0.5f, 0.2f, 0.6f};
+    const std::array<std::pair<const char*, lili::Params>, 4> patches{
+        {{"default", def}, {"echo", echo}, {"wave", wave}, {"busy", busyPatch()}}};
+    for (const auto& [name, patch] : patches) {
+        std::vector<float> mono;
+        std::vector<float> left;
+        std::vector<float> right;
+        for (const bool stereo : {false, true}) {
+            lili::Engine e;
+            e.prepare(kSr);
+            lili::Params p = patch;
+            p.stereo = stereo;
+            startPetals(e, p);
+            if (stereo) {
+                renderStereo(e, static_cast<int>(kSr * 6), left, right);
+            } else {
+                render(e, static_cast<int>(kSr * 6), &mono);
+            }
+        }
+        std::vector<float> mid(mono.size());
+        std::vector<float> side(mono.size());
+        for (size_t i = 0; i < mid.size(); ++i) {
+            mid[i] = 0.5f * (left[i] + right[i]);
+            side[i] = 0.5f * (left[i] - right[i]);
+        }
+        const size_t skip = static_cast<size_t>(kSr); // past the attack
+        const double lowDb = 10.0 * std::log10(lowEnergy(mid, 150.0, skip) / lowEnergy(mono, 150.0, skip));
+        const double allDb = 10.0 * std::log10(energy(mid, skip) / energy(mono, skip));
+        const double powerDb =
+            10.0 * std::log10(0.5 * (energy(left, skip) + energy(right, skip)) / energy(mono, skip));
+        const double sideDb = 10.0 * std::log10(energy(side, skip) / energy(mid, skip));
+        const double sideLowDb = 10.0 * std::log10(lowEnergy(side, 80.0, skip) / lowEnergy(mid, 80.0, skip));
+        const std::string tag = std::string(" (") + name + ")";
+        check(std::fabs(lowDb) < 1.0,
+              "fold-down keeps the lows below 150 Hz" + tag + ": " + std::to_string(lowDb) + " dB");
+        check(std::fabs(allDb) < 1.0,
+              "fold-down keeps the level" + tag + ": " + std::to_string(allDb) + " dB");
+        check(std::fabs(powerDb) < 1.0,
+              "no loudness jump into stereo" + tag + ": " + std::to_string(powerDb) + " dB");
+        check(sideDb > -25.0, "stereo is actually wide" + tag + ": side " + std::to_string(sideDb) + " dB");
+        check(sideLowDb < -20.0,
+              "bass stays centred" + tag + ": side below 80 Hz " + std::to_string(sideLowDb) + " dB");
+    }
+}
+
+void testStereoToggleIsSmooth() {
+    // Switching mid-drone crossfades: the first sample after the switch is where the old mode would
+    // have been, and after the ramp the output is the new mode (exactly L = R once back in mono).
+    const int pre = 48000;
+    const int ramp = static_cast<int>(kSr * lili::Engine::kWidthRampMs / 1000.0) + 512;
+    for (const bool toStereo : {false, true}) {
+        std::vector<float> keepL;
+        std::vector<float> keepR;
+        std::vector<float> flipL;
+        std::vector<float> flipR;
+        for (const bool flip : {false, true}) {
+            lili::Engine e;
+            e.prepare(kSr);
+            lili::Params p; // a smooth drone (triangles, no drive) with echo, so any click would stand out
+            p.distMix = 0.0f;
+            p.delayMix = 0.5f;
+            p.delayFeedback = 0.5f;
+            p.delayTime = {0.45f, 0.5f};
+            p.stereo = !toStereo;
+            startPetals(e, p);
+            auto& l = flip ? flipL : keepL;
+            auto& r = flip ? flipR : keepR;
+            renderStereo(e, pre, l, r);
+            if (flip) {
+                p.stereo = toStereo;
+                e.setParams(p);
+            }
+            renderStereo(e, 2 * ramp + 4800, l, r);
+        }
+        const auto at = static_cast<size_t>(pre);
+        const std::string tag = toStereo ? " (into stereo)" : " (into mono)";
+        float firstStep = 0.0f;
+        for (size_t i = at; i < at + 4; ++i) {
+            firstStep = std::max({firstStep, std::fabs(flipL[i] - keepL[i]), std::fabs(flipR[i] - keepR[i])});
+        }
+        check(firstStep < 2e-3f, "switch starts from the old image" + tag + ": " + std::to_string(firstStep));
+        // Largest sample-to-sample jump during the ramp vs. the steady state either side of it
+        // (the old mode before the switch, the new mode after the ramp).
+        const auto jump = [&](size_t from, size_t to) {
+            float j = 0.0f;
+            for (size_t i = from; i < to; ++i) {
+                j = std::max({j, std::fabs(flipL[i] - flipL[i - 1]), std::fabs(flipR[i] - flipR[i - 1])});
+            }
+            return j;
+        };
+        const auto span = static_cast<size_t>(ramp);
+        const float during = jump(at, at + span);
+        const float steady = std::max(jump(at - span, at), jump(at + span, at + 2 * span));
+        check(during < 1.25f * steady,
+              "switch doesn't click" + tag + ": " + std::to_string(during) + " vs " + std::to_string(steady));
+        bool settled = true;
+        double sideSum = 0.0;
+        for (size_t i = at + static_cast<size_t>(ramp); i < flipL.size(); ++i) {
+            settled = settled && (toStereo || flipL[i] == flipR[i]);
+            sideSum += std::fabs(flipL[i] - flipR[i]);
+        }
+        check(settled && (toStereo == (sideSum > 1.0)), "switch settles into the new mode" + tag);
+    }
+}
+
+void testStereoBounded() {
+    lili::Engine e;
+    e.prepare(kSr);
+    lili::Params p = busyPatch();
+    p.sharp.fill(1.0f);
+    p.mod.fill(1.0f);
+    p.hold = {1.0f, 1.0f};
+    p.totalFb = true;
+    p.delayFeedback = 1.0f;
+    p.delayMix = 1.0f;
+    p.delayModDepth = {1.0f, 1.0f};
+    p.drive = 1.0f;
+    p.distMix = 1.0f;
+    startPetals(e, p);
+    std::vector<float> l;
+    std::vector<float> r;
+    renderStereo(e, static_cast<int>(kSr * 10), l, r);
+    bool ok = true;
+    for (size_t i = 0; i < l.size(); ++i) {
+        ok = ok && std::isfinite(l[i]) && std::isfinite(r[i]) && std::fabs(l[i]) < 4.0f &&
+             std::fabs(r[i]) < 4.0f;
+    }
+    check(ok, "stereo stays finite and bounded at the extremes");
+}
+
 void testParamTableRoundTrip() {
     lili::Params p;
     for (size_t i = 0; i < lili::kNumParams; ++i) {
@@ -466,7 +768,7 @@ void testParamTableRoundTrip() {
     }
     const lili::Params d;
     check(p.tune == d.tune && p.fast == d.fast && p.source == d.source && p.volume == d.volume &&
-              p.delaySource == d.delaySource && p.drive == d.drive,
+              p.delaySource == d.delaySource && p.drive == d.drive && p.stereo == d.stereo,
           "ParamInfo defaults match Params defaults");
 }
 
@@ -487,6 +789,8 @@ int main() {
         {"telemetry", testTelemetry},
         {"wavetable band-limited", testWavetableBandLimited},
         {"wavetable pitch and range", testWavetablePitchAndRange},
+        {"wavetable fundamental", testWavetableFundamental},
+        {"wave tracks classic level", testWaveTracksClassicLevel},
         {"wave engine", testWaveEngine},
         {"seed silent without sample", testSeedSilentWithoutSample},
         {"seed follows tune", testSeedFollowsTune},
@@ -494,6 +798,10 @@ int main() {
         {"bloom off is identical", testBloomOffIsIdentical},
         {"bloom wakes voices", testBloomWakesVoices},
         {"pollinator bounded", testPollinatorBounded},
+        {"mono mode is the mono engine", testMonoModeIsTheMonoEngine},
+        {"stereo folds down to mono", testStereoFoldsDownToMono},
+        {"stereo toggle is smooth", testStereoToggleIsSmooth},
+        {"stereo bounded", testStereoBounded},
         {"param table round trip", testParamTableRoundTrip},
     };
     for (const auto& [name, fn] : tests) {

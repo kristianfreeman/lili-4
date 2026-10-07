@@ -38,7 +38,8 @@ Conventions:
                                           └─▶ "total feedback" (FM source)
 ```
 
-The engine is mono; the reference sends the same signal to both outputs.
+The reference engine is mono and sends the same signal to both outputs. LILI-4
+does the same with Stereo off, and adds a stereo image on top of it (see **Stereo**).
 
 Each **pair** has two voices that share Sharp, Mod, Source, Fast and a vibrato
 LFO. Each **group** (1234, 5678) shares Pitch and Hold.
@@ -70,6 +71,7 @@ LFO. Each **group** (1234, 5678) shares Pitch and Hold.
 | Dist:Mix        | `dst-mix`     | x                                   | 64                   |
 | Volume          | `vol`         | x                                   | 127                  |
 | (not exposed)   | `quantize`    | 0/1: snap voice pitch to semitones  | 0                    |
+| (LILI-4 only)   | `stereo`      | 0 = MONO OUT, 1 = STEREO OUT        | 1                    |
 
 ## Sensors (MIDI)
 
@@ -305,7 +307,7 @@ Everything else in this document applies per petal where it said per pair.
 
 ## Garden engine (not in the reference)
 
-Everything here is opt-in. With Engine = Classic, Bloom = 0 and BEE off, the
+Everything here is opt-in. With Engine = Classic, Bloom = 0, BEE off and Stereo off, the
 engine is bit-identical to the reference port above (tested).
 
 **Petal engine per group** (`engine12`, `engine34`): Classic / Wave / Seed.
@@ -314,8 +316,14 @@ and Hold are shared by all three. Only the waveform source changes, and the
 per-pair **Sharp** becomes "timbre":
 
 - **Classic:** `sq · s − tri · (1 − s)` as above.
-- **Wave:** `0.82 · WT(family, morph = √s, phase)`.
-  - `WavetableBank` has 4 procedural families (Stem, Reed, Glass, Moss), 8 frames × 2048 samples each, every frame RMS-normalised to a unit sine so it sits at the Classic pulse level.
+- **Wave:** `w = 0.7 · WT(family, morph = √s, phase)`, then a body shelf: `out = w + (√17 − 1) · LP1(w, 100 Hz)`.
+  - The body gives Wave the Classic triangle's low-register weight. The triangle is the pulse through a one-pole low-pass at `max(f/4, 100 Hz)`, so below about C4 the 100 Hz floor lets up to √17 (+12.3 dB) more fundamental through than higher up. The shelf has the same corner and the same √17 DC gain, and is transparent from about C5 up. Per petal, Wave measures within about 4 dB of Classic at Timbre 0 from C1 to C5 (tested).
+  - `WavetableBank` has 4 procedural families, 8 frames × 2048 samples each, every frame RMS-normalised to a unit sine. With `t` the frame's morph (0..1) and `n` the harmonic:
+    - **Stem:** `1/n`, even harmonics fading out with `t` (saw to hollow square).
+    - **Reed:** a formant centred on harmonic `2 + 30t`, width `w = 1.5 + 4t`, peak `0.5 · √(1.5/w)`, over a body of `1/n^1.5`.
+    - **Glass:** the fundamental, the octave and the primes, `1/n^(1.6 − 0.9t)`.
+    - **Moss:** the fundamental at 1, overtones `2r²/n^0.85` with `r` seeded per frame and harmonic. Phases are seeded per harmonic and shared by every frame, so morphing never cancels a partial.
+  - Every frame, and every crossfade between frames or families, keeps its fundamental at 0.55 or more of a unit sine (tested).
   - Each frame is band-limited to 11 per-octave mip levels (level `L` keeps harmonics ≤ 1024 ≫ L, chosen so the top harmonic stays below Nyquist for the current phase increment).
   - `table` (0..1) scans the families; frames and families crossfade linearly.
 - **Seed:** a granular read of the group's sample, scaled by 0.8.
@@ -345,3 +353,61 @@ per-pair **Sharp** becomes "timbre":
 - Freq A is flight speed, Freq B is chaos. The leaf LEDs follow sign(x) and sign(y).
 - The state resets if it ever goes non-finite.
 
+## Stereo (not in the reference)
+
+The Lyra-8 is a mono instrument: its main output is mono (the headphone jack
+carries the same signal to both ears), and its MOD DELAY is two lines run in
+parallel. LIRA•8 likewise wires one `master_output` to both `dac~` channels.
+`stereo` (default on) spreads LILI-4 across L and R without changing what it is.
+Every part of the image is built as **mid ± side**, so `(L + R) / 2` is the mono
+signal up to the drive's saturation, and every side signal passes a 4th-order
+Linkwitz–Riley high-pass `HPLR(·)` at 150 Hz (two Butterworth sections:
+−15 dB at 100 Hz, −29 dB at 65 Hz) so the bass stays centred.
+
+With `w` the width (0..1):
+
+```
+pan_v   = −0.65 −0.35 | −0.35 −0.05 | +0.35 +0.05 | +0.65 +0.35   (osc A, B of petals 1 | 2 | 3 | 4)
+side    = w · 0.16 · HPLR(Σ_v pan_v · voice_v)          (voice_v = the oscillator's (shaped + thump) · gain)
+in_L,R  = in ± side
+write_1 = in_L + 0.001 · noise + fb · loop_1           (line 1 is fed from the left,
+write_2 = in_R + 0.001 · noise + fb · loop_2            line 2 from the right)
+wet     = tanhP((loop_1 + loop_2) / max(fb, 1.5))      (the reference's wet, unchanged)
+wetS    = w · tanhP(0.6 · HPLR(loop_2 − loop_1) / max(fb, 1.5))
+wet_L,R = wet ± wetS                                   (the echoes return crosswise: line 2 left, line 1 right)
+delayed_L,R = 0.7 · in_L,R · (1 − mix) + mix · wet_L,R
+mixed_L,R   = the drive/distortion section, run per channel (its own 20 Hz and 10 Hz high-passes)
+out_L,R     = mixed_L,R · vol
+totalFeedback = HP1(tanhP((mixed_L + mixed_R) / 2), 3 Hz)   (stays one mono FM source)
+```
+
+- **Petals** sit where they are on the board: group 1·2 left and 3·4 right, at
+  −0.5, −0.2, +0.2 and +0.5. A petal's two oscillators are 0.3 apart (A outside,
+  B inside), so the slow beating of a detuned pair drifts across the image, and
+  Bloom's per-oscillator breathing moves in space. Pans are linear
+  (`L = 1 + pan`, `R = 1 − pan`), so nothing is lost in a fold-down, and nothing
+  is hard-panned: the widest oscillator is 13.5 dB down on the far side.
+- **ECHO** is the natural L/R pair. Each line hears its own side of the
+  petals and returns on the other, so a sound on the left echoes on the right.
+  The cross-feed has its own saturator, outside the reference's, because inside
+  it the cross-feed's highs intermodulate with the bass of the mid and leak low
+  end into the sides. 0.6 puts each line 12 dB lower on its own side.
+- **DRIVE** runs per channel, like a stereo pair of the same circuit. When it
+  saturates, the image narrows with it.
+- **The LFOs and the Pollinator** aren't routed to panning. They already move
+  the image through the two echo lines (Mod 1 and Mod 2 set separate depths),
+  and the instrument's motion stays where the reference puts it.
+- **Mono is exact.** With `w = 0` the engine runs the reference section above,
+  bit for bit, with `L = R`. `process(left, nullptr)` (a mono output) always
+  takes that path. Checked against renders of the engine from before stereo
+  existed (`lili_render … stereo=0 channels=2`), and in `lili_tests`.
+- **Switching** ramps `w` linearly over 40 ms, so MONO/STEREO OUT never clicks.
+  Entering stereo starts the right channel's drive filters from the left
+  channel's state.
+- **Measured** (6–14 s renders of default, Wave Stem, a heavy echo, FM with the
+  Pollinator, and Bloom with full drive): `(L + R) / 2` against Stereo off is
+  within 0.2 dB below 150 Hz and within 0.3 dB overall, and the mean power of L
+  and R is within 0.25 dB of mono. Side/mid is about −17 dB on the default patch,
+  where most of the energy is in centred fundamentals, and −11 dB with echo.
+  Below 80 Hz it is about −27 dB with echo, and is tested to stay under −20 dB.
+- **State:** a saved state with no `stereo` loads with the default, Stereo on.
