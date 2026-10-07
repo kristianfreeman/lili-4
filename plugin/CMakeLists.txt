@@ -40,6 +40,7 @@ juce_add_binary_data(LiliAssets
         assets/board.png
         assets/knob_strip.png
         assets/toggle_strip.png
+        assets/outmode_strip.png
         assets/glow/glow.json
         ${lili_glow_assets}
         ${PROJECT_SOURCE_DIR}/art/board.json

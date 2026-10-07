@@ -1,108 +1,315 @@
 {
-  "comment": "LILI-4 board layout. Units: board px (1120x800), y down. Single source for the Blender scene (tools/art) and the native editor's controls. Paths use absolute M/L/H/V/Q/C/Z only. Four petals fan up from U1 on a long stem; petal i = pads[i] = petals[i].",
-  "size": [1120, 800],
-  "cornerRadius": 18,
-
-  "petals": [
-    "M538.1 274.0 Q474.5 223.0 469.9 130.5 Q544.0 186.1 550.6 267.3",
-    "M526.3 295.3 Q445.0 300.0 379.6 234.3 Q471.9 226.1 531.2 282.0",
-    "M569.4 267.3 Q576.0 186.1 650.1 130.5 Q645.5 223.0 581.9 274.0",
-    "M588.8 282.0 Q648.1 226.1 740.4 234.3 Q675.0 300.0 593.7 295.3"
+  "comment": "LILI-4 board layout, compact horizontal. Units: board px = editor points (1000x424), y down. Single source for the Blender scene (tools/art) and the native editor's controls. Control coordinates are centres. Labels sit centred below each control on baseline y + labelOffset. Paths use absolute M/L/H/V/Q/C/Z only. The flower is copper under the mask; petal i = pads[i] = petals[i] = sensor i+1.",
+  "size": [1000, 424],
+  "cornerRadius": 16,
+  "type": {
+    "font": "IBMPlexMono-Medium",
+    "comment": "levels: title (reversed-out tab), label, legend (dimmed ink). size in px, tracking in em",
+    "title": {
+      "size": 9,
+      "tracking": 0.16
+    },
+    "label": {
+      "size": 8.5,
+      "tracking": 0.08
+    },
+    "legend": {
+      "size": 8,
+      "tracking": 0.04,
+      "ink": 0.74
+    }
+  },
+  "labelOffset": 32,
+  "knobScale": 0.88,
+  "petals": ["M490.0 152.0 Q479.5 126.5 452.0 128.0 Q462.5 153.5 490.0 152.0", "M486.0 166.0 Q453.3 151.1 424.0 172.0 Q456.7 186.9 486.0 166.0", "M514.0 166.0 Q543.3 186.9 576.0 172.0 Q546.7 151.1 514.0 166.0", "M510.0 152.0 Q537.5 153.5 548.0 128.0 Q520.5 126.5 510.0 152.0"],
+  "ribs": ["M485.4 149.1 L462.6 134.7", "M478.6 166.7 L441.4 170.3", "M521.4 166.7 L558.6 170.3", "M514.6 149.1 L537.4 134.7"],
+  "padRuns": ["M34 252 H8 V201 H407.5 V128 H452", "M370 234 V204 H410.5 V172 H424", "M630 234 V204 H589.5 V172 H576", "M966 252 H992 V201 H592.5 V128 H548"],
+  "stem": "M500 178 V204 H518 V306 H512 V312",
+  "meanders": ["M489.5 332 V336 H450 V372 H455 V340 H460 V372 H465 V340 H470 V372 H475 V356 H482", "M510.5 332 V336 H550 V372 H545 V340 H540 V372 H535 V340 H530 V372 H525 V356 H518"],
+  "xmod": ["M466 147 L454 159", "M534 147 L546 159"],
+  "totalFb": "M509 371.6 L512 375 V400 H553 V308 H591 V206.5 H524 V186",
+  "pads": [
+    [52, 252, "S1"],
+    [370, 252, "S2"],
+    [630, 252, "S3"],
+    [948, 252, "S4"]
   ],
-  "ribs": [
-    "M544.0 270.0 L482.5 154.3", "M528.1 288.4 L405.0 243.6",
-    "M576.0 270.0 L637.5 154.3", "M591.9 288.4 L715.0 243.6"
+  "padRadius": 18,
+  "stamenLeds": [
+    [495, 128],
+    [500, 128],
+    [505, 128]
   ],
-  "pads": [[461.4, 114.6], [362.7, 228.2], [658.6, 114.6], [757.3, 228.2]],
-  "padRadius": 20,
-
-  "traces": [
-    "M308 118 H420 L436 116",
-    "M308 330 H322 L350 250",
-    "M812 118 H700 L684 116",
-    "M812 330 H798 L770 250",
-    "M560 280 V200",
-    "M532.1 319.5 L486.3 351.6",
-    "M587.9 319.5 L633.7 351.6"
+  "meters": [
+    [114, 152],
+    [312, 152],
+    [692, 152],
+    [890, 152]
   ],
-  "stem": "M560 318 V522 M560 522 L546 536 V548 M560 522 L574 536 V548 M546 628 L560 640 M574 628 L560 640 M560 668 V704",
-  "meanders": [
-    "M546 548 H554 V556 H538 V564 H554 V572 H538 V580 H554 V588 H538 V596 H554 V604 H538 V612 H554 V620 H546 V628",
-    "M574 548 H582 V556 H566 V564 H582 V572 H566 V580 H582 V588 H566 V596 H582 V604 H566 V612 H582 V620 H574 V628"
+  "meterPitch": 10,
+  "u1": [500, 164],
+  "leds": [
+    [462, 230],
+    [510, 230]
   ],
-  "leaves": [
-    "M552 522 C500 505 420 540 392 630 C470 640 522 600 550 534 Z",
-    "M568 522 C620 505 700 540 728 630 C650 640 598 600 570 534 Z"
-  ],
-  "leafRibs": ["M550 528 Q470 560 400 624", "M570 528 Q650 560 720 624"],
-  "xmod": ["M346 209 C330 150 385 95 437 106", "M774 209 C790 150 735 95 683 106"],
-  "totalFb": "M578 722 H800 V380 Q800 368 788 368 H690 L600 320",
-
-  "vias": [[560, 194], [481.4, 355.1], [638.6, 355.1]],
-  "stamenLeds": [[560, 180], [471.5, 361.9], [648.5, 361.9]],
-  "meters": [[172, 236], [172, 440], [958, 236], [958, 440]],
-  "u1": [560, 300],
-  "holes": [[28, 28], [1092, 28], [28, 772], [1092, 772]],
-  "leds": [[400, 626], [720, 626]],
-  "u2": [542, 641, 36, 24],
-  "jack": [560, 722],
-
+  "u2": [485, 314, 30, 16],
+  "jack": [500, 356],
   "boxes": [
-    [28, 84, 280, 190], [28, 288, 280, 190], [28, 492, 280, 92],
-    [812, 84, 280, 190], [812, 288, 280, 190], [812, 492, 280, 92],
-    [28, 664, 492, 108], [640, 664, 452, 108]
+    [16, 44, 192, 156, "PETAL 1"],
+    [214, 44, 192, 156, "PETAL 2"],
+    [594, 44, 192, 156, "PETAL 3"],
+    [792, 44, 192, 156, "PETAL 4"],
+    [412, 44, 176, 156, "GARDEN"],
+    [16, 208, 390, 96, "GROUP 1·2"],
+    [594, 208, 390, 96, "GROUP 3·4"],
+    [412, 208, 176, 96, "LFO"],
+    [16, 312, 428, 96, "ECHO"],
+    [556, 312, 428, 96, "OUTPUT"]
+  ],
+  "brackets": [
+    [44, 90, 396, "TIME"],
+    [228, 386, 396, "MOD"],
+    [584, 630, 396, "DIST"],
+    [736, 896, 396, "GLOBAL"]
   ],
   "labels": [
-    [40, 96, "PETAL 1", "left", 1], [40, 300, "PETAL 2", "left", 1], [40, 504, "GROUP 1·2", "left", 1],
-    [1080, 96, "PETAL 3", "right", 1], [1080, 300, "PETAL 4", "right", 1], [1080, 504, "GROUP 3·4", "right", 1],
-    [40, 677, "ECHO", "left", 1], [652, 677, "OUTPUT · GLOBAL", "left", 1],
-    [338, 142, "XM", "center", 0], [782, 142, "XM", "center", 0], [704, 360, "TOTAL FB", "left", 0],
-    [572, 214, "TP1", "left", 0], [476, 384, "TP2", "center", 0], [644, 384, "TP3", "center", 0],
-    [532, 590, "ECHO A", "right", 0], [590, 590, "ECHO B", "left", 0],
-    [470, 660, "LFO A", "center", 1], [650, 660, "LFO B", "center", 1],
-    [586, 336, "U1", "left", 1], [588, 657, "U2", "left", 1], [534, 657, "DRIVE", "right", 0],
-    [560, 758, "OUT", "center", 1],
-    [56, 70, "A GARDEN DRONE · REV B", "left", 0],
-    [1064, 44, "MIDI C1 D1 E1 F1 → PETALS 1–4    MONO OUT", "right", 0]
+    [484, 194, "U1", "right", "legend"],
+    [520, 324, "U2", "left", "legend"],
+    [500, 388, "OUT", "center", "label"],
+    [984, 24, "C1 D1 E1 F1", "right", "legend"]
   ],
-  "logo": [56, 52, "LILI-4"],
-
+  "logo": {
+    "block": [16, 12, 104, 26],
+    "text": "LILI-4",
+    "size": 17,
+    "tracking": 0.212,
+    "baseline": 31,
+    "subtitle": [
+      [132, 24, "GARDEN DRONE SYNTHESIZER", "label"],
+      [132, 36, "4 PETALS · 8 OSC · REV B", "legend"]
+    ]
+  },
+  "outMode": {
+    "comment": "Clickable silkscreen: the 'stereo' parameter. texts[0] = off (mono), texts[1] = on. Baked as a 2-frame strip of the board patch 'patch' (board px); 'hit' is the click area.",
+    "id": "stereo",
+    "x": 984,
+    "y": 36,
+    "align": "right",
+    "level": "legend",
+    "texts": ["MONO OUT", "STEREO OUT"],
+    "default": 1,
+    "patch": [916, 27, 72, 12],
+    "hit": [918, 25, 70, 16],
+    "name": "OUTPUT"
+  },
   "knobs": [
-    ["tune1", 44, 108, "TUNE", 0.17], ["spread1", 106, 108, "SPREAD", 0.56], ["timbre1", 168, 108, "TIMBRE", 0.4], ["mod1", 230, 108, "MOD", 0.3],
-    ["tune2", 44, 312, "TUNE", 0.26], ["spread2", 106, 312, "SPREAD", 0.8], ["timbre2", 168, 312, "TIMBRE", 0.6], ["mod2", 230, 312, "MOD", 0.0],
-    ["tune3", 828, 108, "TUNE", 0.33], ["spread3", 890, 108, "SPREAD", 0.56], ["timbre3", 952, 108, "TIMBRE", 0.2], ["mod3", 1014, 108, "MOD", 0.5],
-    ["tune4", 828, 312, "TUNE", 0.43], ["spread4", 890, 312, "SPREAD", 0.3], ["timbre4", 952, 312, "TIMBRE", 0.7], ["mod4", 1014, 312, "MOD", 0.2],
-    ["pitch12", 44, 516, "PITCH", 0.5], ["hold12", 106, 516, "HOLD", 0.24], ["table12", 246, 516, "TABLE", 0.0],
-    ["pitch34", 828, 516, "PITCH", 0.52], ["hold34", 890, 516, "HOLD", 0.0], ["table34", 1030, 516, "TABLE", 0.0],
-    ["lfoFreqA", 440, 548, "FREQ A", 0.41], ["lfoFreqB", 632, 548, "FREQ B", 0.69],
-    ["delTime1", 40, 698, "TIME 1", 0.57], ["delTime2", 96, 698, "TIME 2", 0.33], ["delFeedback", 152, 698, "FDBK", 0.76], ["delMix", 208, 698, "MIX", 0.54],
-    ["delMod1", 264, 698, "MOD 1", 0.39], ["delMod2", 320, 698, "MOD 2", 0.59],
-    ["distDrive", 656, 698, "DRIVE", 0.7], ["distMix", 712, 698, "MIX", 0.5], ["volume", 768, 698, "VOL", 0.8],
-    ["bloom", 452, 423, "BLOOM", 0.0], ["drift", 616, 423, "DRIFT", 0.4]
+    ["tune1", 42, 88, "TUNE", 0.17],
+    ["spread1", 88, 88, "SPREAD", 0.56],
+    ["timbre1", 134, 88, "TIMBRE", 0.4],
+    ["mod1", 180, 88, "MOD", 0.3],
+    ["tune2", 240, 88, "TUNE", 0.26],
+    ["spread2", 286, 88, "SPREAD", 0.8],
+    ["timbre2", 332, 88, "TIMBRE", 0.6],
+    ["mod2", 378, 88, "MOD", 0.0],
+    ["tune3", 620, 88, "TUNE", 0.33],
+    ["spread3", 666, 88, "SPREAD", 0.56],
+    ["timbre3", 712, 88, "TIMBRE", 0.2],
+    ["mod3", 758, 88, "MOD", 0.5],
+    ["tune4", 818, 88, "TUNE", 0.43],
+    ["spread4", 864, 88, "SPREAD", 0.3],
+    ["timbre4", 910, 88, "TIMBRE", 0.7],
+    ["mod4", 956, 88, "MOD", 0.2],
+    ["bloom", 446, 88, "BLOOM", 0.0],
+    ["drift", 554, 88, "DRIFT", 0.4],
+    ["pitch12", 112, 252, "PITCH", 0.5],
+    ["hold12", 160, 252, "HOLD", 0.24],
+    ["table12", 300, 252, "TABLE", 0.0],
+    ["pitch34", 690, 252, "PITCH", 0.52],
+    ["hold34", 738, 252, "HOLD", 0.0],
+    ["table34", 878, 252, "TABLE", 0.0],
+    ["lfoFreqA", 442, 252, "RATE A", 0.41, "LFO RATE A"],
+    ["lfoFreqB", 490, 252, "RATE B", 0.69, "LFO RATE B"],
+    ["delTime1", 44, 356, "1", 0.57, "TIME 1"],
+    ["delTime2", 90, 356, "2", 0.33, "TIME 2"],
+    ["delFeedback", 136, 356, "FDBK", 0.76],
+    ["delMix", 182, 356, "MIX", 0.54, "ECHO MIX"],
+    ["delMod1", 228, 356, "1", 0.39, "MOD 1"],
+    ["delMod2", 274, 356, "2", 0.59, "MOD 2"],
+    ["distDrive", 584, 356, "DRIVE", 0.7],
+    ["distMix", 630, 356, "MIX", 0.5, "DIST MIX"],
+    ["volume", 676, 356, "VOL", 0.8]
   ],
-  "controlStyle": {"knob": "cream", "switch": "toggle", "pad": "comb"},
-  "jumperPitch": 34,
+  "controlStyle": {
+    "knob": "cream",
+    "switch": "toggle",
+    "pad": "comb"
+  },
   "jumpers": [
-    ["source1", 44, 196, "SOURCE", ["2", "OFF", "LFO"], 0],
-    ["source2", 44, 400, "SOURCE", ["1", "OFF", "LFO"], 1],
-    ["source3", 828, 196, "SOURCE", ["4", "OFF", "LFO"], 2],
-    ["source4", 828, 400, "SOURCE", ["3", "OFF", "LFO"], 1],
-    ["engine12", 170, 498, "ENGINE", ["CLASSIC", "WAVE", "SEED"], 0],
-    ["engine34", 950, 498, "ENGINE", ["CLASSIC", "WAVE", "SEED"], 0],
-    ["delSource", 382, 682, "MOD SRC", ["SELF", "OFF", "LFO"], 2],
-    ["delWaveform", 450, 682, "WAVE", ["TRI", "SQR"], 0],
-    ["lfoAndOr", 1022, 682, "LFO LOGIC", ["AND", "OR"], 0]
+    [
+      "source1",
+      40,
+      152,
+      "SOURCE",
+      ["2", "OFF", "LFO"],
+      0
+    ],
+    [
+      "source2",
+      238,
+      152,
+      "SOURCE",
+      ["1", "OFF", "LFO"],
+      1
+    ],
+    [
+      "source3",
+      618,
+      152,
+      "SOURCE",
+      ["4", "OFF", "LFO"],
+      2
+    ],
+    [
+      "source4",
+      816,
+      152,
+      "SOURCE",
+      ["3", "OFF", "LFO"],
+      1
+    ],
+    [
+      "engine12",
+      208,
+      252,
+      "ENGINE",
+      ["CLASSIC", "WAVE", "SEED"],
+      0
+    ],
+    [
+      "engine34",
+      786,
+      252,
+      "ENGINE",
+      ["CLASSIC", "WAVE", "SEED"],
+      0
+    ],
+    [
+      "lfoAndOr",
+      538,
+      252,
+      "LOGIC",
+      ["AND", "OR"],
+      0,
+      "LFO LOGIC"
+    ],
+    [
+      "delSource",
+      322,
+      356,
+      "SRC",
+      ["SELF", "OFF", "LFO"],
+      2,
+      "MOD SRC"
+    ],
+    [
+      "delWaveform",
+      386,
+      356,
+      "WAVE",
+      ["TRI", "SQR"],
+      0,
+      "MOD WAVE"
+    ]
   ],
   "dips": [
-    [236, 190, "SPEED", [["fast1", "FAST", 1]]],
-    [236, 394, "SPEED", [["fast2", "FAST", 1]]],
-    [1026, 190, "SPEED", [["fast3", "FAST", 0]]],
-    [1026, 394, "SPEED", [["fast4", "FAST", 1]]],
-    [830, 682, "GLOBAL", [["switch", "SW", 0], ["totalFb", "T.FB", 1], ["vibrato", "VIB", 0], ["lfoLink", "LINK", 1], ["quantize", "QNT", 0]]],
-    [379, 394, "", [["bee", "BEE", 0]]]
+    [
+      "fast1",
+      166,
+      152,
+      "SPEED",
+      ["FAST", "SLOW"],
+      1
+    ],
+    [
+      "fast2",
+      364,
+      152,
+      "SPEED",
+      ["FAST", "SLOW"],
+      1
+    ],
+    [
+      "fast3",
+      744,
+      152,
+      "SPEED",
+      ["FAST", "SLOW"],
+      0
+    ],
+    [
+      "fast4",
+      942,
+      152,
+      "SPEED",
+      ["FAST", "SLOW"],
+      1
+    ],
+    [
+      "bee",
+      500,
+      88,
+      "BEE",
+      [],
+      0
+    ],
+    [
+      "switch",
+      736,
+      356,
+      "SW",
+      [],
+      0
+    ],
+    [
+      "totalFb",
+      776,
+      356,
+      "T.FB",
+      [],
+      1
+    ],
+    [
+      "vibrato",
+      816,
+      356,
+      "VIB",
+      [],
+      0
+    ],
+    [
+      "lfoLink",
+      856,
+      356,
+      "LINK",
+      [],
+      1
+    ],
+    [
+      "quantize",
+      896,
+      356,
+      "QNT",
+      [],
+      0
+    ]
   ],
-
   "litPreview": {
-    "petals": [0, 3], "meters": [4, 0, 0, 3], "stem": true, "meanders": [0], "leds": [0], "stamenLeds": [0, 1, 2], "xmod": [0]
+    "petals": [0, 3],
+    "meters": [4, 0, 0, 3],
+    "stem": true,
+    "meanders": [0],
+    "leds": [0],
+    "stamenLeds": [0, 1, 2],
+    "xmod": [0]
   }
 }

@@ -31,13 +31,12 @@ def feather(img):
 DESCRIPTIONS = {
     "knobStrip": {
         "value": "frame = round(value * (frames - 1)); value 0 = 7 o'clock, 1 = 5 o'clock",
-        "anchor": "sprite centre = knob centre, board px (x + 26, y + 17) for board.json knobs, * scale",
+        "anchor": "sprite centre = knob centre, board px (x, y) for board.json knobs, * scale",
     },
     "toggleStrip": {
         "value": "frames 0/1/2 = up/centre/down. 3-way: option index = frame; 2-way: option 0 = up (0), "
                  "option 1 = down (2); DIP-style toggles: on = up, off = down",
-        "anchor": "sprite centre = toggle pivot, board px (x + 16, y + 38) for jumpers and "
-                  "(x + 16 + 38 * i, y + 38) for dips, * scale",
+        "anchor": "sprite centre = toggle pivot, board px (x, y) for board.json jumpers and dips, * scale",
     },
 }
 

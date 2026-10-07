@@ -1,6 +1,6 @@
 """Reference compositor for baked layers (mirrors what the plugin's shader will do).
 
-    python3 tools/art/composite.py build/art/layers out.png voice0=1 voice5=1 voice2=0.5 mix=0.8 ...
+    python3 tools/art/composite.py build/art/layers out.png petal0=1 mix=0.8 knob:tune1=0.2 toggle:bee=1 outmode=0 ...
 
 Decodes each 16-bit sRGB layer to linear light, undoes the bake exposure,
 sums base + level * layer, tone-maps with an AgX approximation, encodes sRGB.
@@ -63,6 +63,17 @@ def main():
     acc = load(os.path.join(layers_dir, manifest["base"]), gain)
     args = sys.argv[3:]
 
+    # Glow first: the lit copper is under the mask, so knobs and toggles (drawn next) cover it,
+    # as in the editor.
+    rects = {layer["name"]: layer.get("rect") for layer in manifest["layers"]}
+    for arg in args:
+        if arg.startswith(("knob:", "toggle:", "outmode")):
+            continue
+        name, level = arg.split("=")
+        img = float(level) * load(os.path.join(layers_dir, name + ".png"), gain)
+        x, y, w, h = rects.get(name) or (0, 0, img.shape[1], img.shape[0])
+        acc[y:y + h, x:x + w] += img  # cropped layers sit at their rect (crop_layers.py)
+
     # Control bodies from sprite strips (a base baked with --no-controls has only labels/scales).
     root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     board = json.load(open(os.path.join(root, "art", "board.json")))
@@ -84,35 +95,38 @@ def main():
         rgb = srgb_to_linear(frame[..., :3]) * gain
         a = frame[..., 3:4]
         x0, y0 = int(cx * s - fw / 2), int(cy * s - fh / 2)
-        region = acc[y0:y0 + fh, x0:x0 + fw]
-        acc[y0:y0 + fh, x0:x0 + fw] = rgb * a + region * (1 - a)
+        # Clip to the board: sprites near the edge (shadow margins) hang over it.
+        cx0, cy0 = max(x0, 0), max(y0, 0)
+        cx1, cy1 = min(x0 + fw, acc.shape[1]), min(y0 + fh, acc.shape[0])
+        rgb = rgb[cy0 - y0:cy1 - y0, cx0 - x0:cx1 - x0]
+        a = a[cy0 - y0:cy1 - y0, cx0 - x0:cx1 - x0]
+        acc[cy0:cy1, cx0:cx1] = rgb * a + acc[cy0:cy1, cx0:cx1] * (1 - a)
 
     info, raw = strip("knobStrip")
     if info:
         knob_values = overrides("knob:")
-        for pid, x, y, _label, value in board["knobs"]:
+        for pid, x, y, _label, value, *_ in board["knobs"]:
             value = knob_values.get(pid, value)
-            draw(info, raw, round(value * (info["frames"] - 1)), x + 26, y + 17)
+            draw(info, raw, round(value * (info["frames"] - 1)), x, y)
 
     info, raw = strip("toggleStrip")
     if info:
         states = overrides("toggle:")
-        for pid, x, y, _title, labels, sel in board["jumpers"]:
+        for pid, x, y, _title, labels, sel, *_ in board["jumpers"]:
             sel = int(states.get(pid, sel))
-            draw(info, raw, sel if len(labels) == 3 else (0 if sel == 0 else 2), x + 16, y + 38)
-        for x, y, _title, items in board["dips"]:
-            for i, (pid, _label, on) in enumerate(items):
-                on = states.get(pid, on)
-                draw(info, raw, 0 if on else 2, x + 16 + 38 * i, y + 38)
+            draw(info, raw, sel if len(labels) == 3 else (0 if sel == 0 else 2), x, y)
+        for pid, x, y, _title, _legends, on, *_ in board["dips"]:
+            on = states.get(pid, on)
+            draw(info, raw, 0 if on else 2, x, y)
 
-    rects = {layer["name"]: layer.get("rect") for layer in manifest["layers"]}
-    for arg in args:
-        if arg.startswith(("knob:", "toggle:")):
-            continue
-        name, level = arg.split("=")
-        img = float(level) * load(os.path.join(layers_dir, name + ".png"), gain)
-        x, y, w, h = rects.get(name) or (0, 0, img.shape[1], img.shape[0])
-        acc[y:y + h, x:x + w] += img  # cropped layers sit at their rect (crop_layers.py)
+    # Output-mode silkscreen (outmode=0 mono, 1 stereo): its re-rendered board patch.
+    om = manifest.get("outMode")
+    if om:
+        k = int(overrides("outmode").get("", board["outMode"].get("default", 0)))
+        px, py, pw, ph = (v * s for v in om["patch"])
+        patch = load(os.path.join(layers_dir, om["files"][k]), gain)
+        acc[py:py + ph, px:px + pw] = patch[py:py + ph, px:px + pw]
+
     rgb = linear_to_srgb(agx(acc))
     Image.fromarray((rgb * 255 + 0.5).astype(np.uint8)).save(out)
     print("wrote", out)

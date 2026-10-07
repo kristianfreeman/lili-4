@@ -31,6 +31,7 @@ On the board:
 - **Knobs:** drag up or down (hold Shift for fine control). Double-click to reset, or use the scroll wheel.
 - **Toggles:** click to throw. On 3-way toggles, click above or below the pivot.
 - **Petal pads:** click to latch a petal on.
+- **MONO OUT / STEREO OUT** (top right): click the label to switch the output between mono and stereo.
 - **Hover** over any control to see its value in real units.
 - **Drop an audio file** on the left or right half of the board to load a Seed sample for group 1·2 or 3·4.
 

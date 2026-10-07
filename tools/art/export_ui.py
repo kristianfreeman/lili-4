@@ -4,7 +4,9 @@
 
 The editor draws with JUCE's software renderer, which loads PNGs
 as 8-bit, so this bakes the AgX look in: board.png (base, controls removed)
-plus knob_strip.png and toggle_strip.png (straight alpha). The linear 16-bit
+plus knob_strip.png and toggle_strip.png (straight alpha), outmode_strip.png
+(the clickable MONO OUT / STEREO OUT silkscreen, one board patch per state) and
+the glow deltas in glow/. The linear 16-bit
 layers stay the source of truth for any re-export.
 """
 
@@ -39,6 +41,27 @@ def main():
         rgb = linear_to_srgb(agx(srgb_to_linear(raw[..., :3]) * gain))
         rgba = np.concatenate([to8(rgb), to8(raw[..., 3:4])], axis=2)
         Image.fromarray(rgba, "RGBA").save(os.path.join(out_dir, info["file"]), optimize=True)
+
+    # Output-mode silkscreen: the board patch around it, once per text state,
+    # stacked into a strip (frame k = state k). Alpha feathers the outer few px so
+    # the patch melts into the board even where denoising differs slightly.
+    om = manifest.get("outMode")
+    if om:
+        s = manifest["scale"]
+        px, py, pw, ph = (v * s for v in om["patch"])
+        ramp_px = 3.0
+
+        def ramp(n):
+            d = np.clip((np.minimum(np.arange(n), np.arange(n)[::-1]) + 0.5) / ramp_px, 0.0, 1.0)
+            return d * d * (3 - 2 * d)
+
+        alpha = np.outer(ramp(ph), ramp(pw))[..., None]
+        frames = []
+        for f in om["files"]:
+            lin = load(os.path.join(layers_dir, f), gain)[py:py + ph, px:px + pw]
+            frames.append(np.concatenate([to8(linear_to_srgb(agx(lin))), to8(alpha)], axis=2))
+        Image.fromarray(np.concatenate(frames, axis=0), "RGBA").save(os.path.join(out_dir, "outmode_strip.png"),
+                                                                     optimize=True)
 
     # Glow deltas: how much each element brightens the *displayed* board at full
     # level, AgX(base + layer) - AgX(base), 8-bit RGB cropped to the layer rect.
