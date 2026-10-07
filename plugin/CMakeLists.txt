@@ -58,5 +58,8 @@ target_link_libraries(LILI4
         juce::juce_audio_utils
     PUBLIC
         juce::juce_recommended_config_flags
-        juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
+if(LILI_LTO)
+    target_link_libraries(LILI4 PUBLIC juce::juce_recommended_lto_flags)
+endif()

@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -51,10 +52,14 @@ jobs:
         if: runner.os != 'Windows'
         run: ./build/tests/lili_bench
 
+  # Pull requests build a quick arm64-only plugin without LTO, to check it builds and validates.
+  # Pushes to main and v* tags build the universal, LTO release artefacts. Either way, ccache
+  # keeps JUCE from being recompiled from scratch on every run.
   plugin-macos:
-    name: Plugin (macOS universal AU/VST3)
-    needs: test
+    name: Plugin (macOS ${{ github.event_name == 'pull_request' && 'arm64, quick' || 'universal' }})
     runs-on: macos-latest
+    env:
+      RELEASE_BUILD: ${{ github.event_name != 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
       - name: Cache JUCE
@@ -66,13 +71,26 @@ jobs:
       - name: Fetch JUCE
         if: steps.juce-cache.outputs.cache-hit != 'true'
         run: git clone --depth 1 --branch "$JUCE_VERSION" https://github.com/juce-framework/JUCE.git .deps/JUCE
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: plugin-${{ env.RELEASE_BUILD == 'true' && 'universal-lto' || 'arm64' }}
+          max-size: 1G
       - name: Configure
         run: |
+          if [[ "$RELEASE_BUILD" == true ]]; then
+            archs="arm64;x86_64"; lto=ON
+          else
+            archs="arm64"; lto=OFF
+          fi
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLILI_JUCE_DIR=.deps/JUCE \
-            "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
+            -DLILI_BUILD_TESTS=OFF -DLILI_LTO=$lto "-DCMAKE_OSX_ARCHITECTURES=$archs" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_OBJC_COMPILER_LAUNCHER=ccache -DCMAKE_OBJCXX_COMPILER_LAUNCHER=ccache
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build --config Release --parallel "$(sysctl -n hw.ncpu)"
       - name: Check architectures
+        if: env.RELEASE_BUILD == 'true'
         run: |
           for bin in build/plugin/LILI4_artefacts/Release/AU/LILI-4.component/Contents/MacOS/LILI-4 \
                      build/plugin/LILI4_artefacts/Release/VST3/LILI-4.vst3/Contents/MacOS/LILI-4; do
@@ -92,6 +110,7 @@ jobs:
           pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process \
             --timeout-ms 600000 build/plugin/LILI4_artefacts/Release/VST3/LILI-4.vst3
       - name: Package
+        if: env.RELEASE_BUILD == 'true'
         run: |
           mkdir -p dist
           cd build/plugin/LILI4_artefacts/Release
@@ -99,6 +118,7 @@ jobs:
           ditto -c -k --keepParent VST3/LILI-4.vst3 "$GITHUB_WORKSPACE/dist/LILI-4.vst3.zip"
           ditto -c -k --keepParent Standalone/LILI-4.app "$GITHUB_WORKSPACE/dist/LILI-4.app.zip"
       - uses: actions/upload-artifact@v4
+        if: env.RELEASE_BUILD == 'true'
         with:
           name: LILI-4-macOS-universal
           path: dist/*.zip
