@@ -101,3 +101,14 @@ The editor has environment hooks for rendering documentation images from the sta
 | `LILI_SNAPSHOT_PARAMS="hold12=1,bloom=0.5"` | Sets normalised parameter values. |
 | `LILI_SNAPSHOT_READOUT=tune1` | Shows that control's hover readout. |
 | `LILI_SNAPSHOT_SEED=/path.wav` | Loads a Seed sample into group 3·4. |
+
+## Promo renders
+
+`tools/art/render_promo.py` renders marketing shots of the same board. It builds the scene with `render_board.build()` in the lit state, swaps in real-proportion knobs and toggles, and adds a perspective camera and studio lights. Output goes to `promo/`, which is gitignored.
+
+```sh
+blender -b -P tools/art/render_promo.py -- --shot preview-8 --samples 24
+python3 tools/art/promo_post.py promo/preview-8.png promo/preview-8-post.png
+```
+
+`--shot` takes a comma-separated list: `hero`, `exploded`, `knobs`, `knobs-a`…`knobs-c` or `preview-1`…`preview-8`. Use low samples (16–24) to iterate on an angle, and 128 or more for a final render. `promo_post.py` adds bloom, a filmic grade, a vignette, slight chromatic aberration and grain; its constants are at the top of the file. The `preview-*` shots are framed for the compact board. The older shots still use cameras framed for the previous 1120×800 board.
